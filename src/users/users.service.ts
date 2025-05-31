@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException } from '@nestjs/common';
 import { Prisma } from 'generated/prisma';
 import { DatabaseService } from 'src/database/database.service';
 
@@ -7,9 +7,21 @@ export class UsersService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async create(createUserDto: Prisma.UserCreateInput) {
-    return this.databaseService.user.create({
-      data: createUserDto,
-    });
+    try {
+      return await this.databaseService.user.create({
+        data: createUserDto,
+      });
+    } catch (error) {
+      if (
+        error.code === 'P2002' &&
+        error.meta &&
+        error.meta.target &&
+        error.meta.target.includes('email')
+      ) {
+        throw new ConflictException('email is already registered');
+      }
+      throw error;
+    }
   }
 
   async findAll(role?: 'CUSTOMER' | 'CLERK' | 'MANAGER' | 'TRAVEL_COMPANY') {
