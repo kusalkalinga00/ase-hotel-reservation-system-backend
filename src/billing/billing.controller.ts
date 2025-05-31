@@ -1,6 +1,13 @@
 import { Controller, Post, Get, Param, Body, Query } from '@nestjs/common';
 import { BillingService } from './billing.service';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiBody,
+} from '@nestjs/swagger';
 
 @ApiTags('Billing')
 @Controller('billing')
@@ -9,17 +16,30 @@ export class BillingController {
 
   @Post()
   @ApiOperation({ summary: 'Create a billing record for a reservation' })
-  @ApiBody({ schema: {
-    type: 'object',
-    properties: {
-      reservationId: { type: 'string', example: 'uuid' },
-      amount: { type: 'number', example: 100 },
-      paymentMethod: { type: 'string', enum: ['CASH', 'CREDIT_CARD', 'COMPANY'], example: 'CREDIT_CARD' },
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reservationId: { type: 'string', example: 'uuid' },
+        amount: { type: 'number', example: 100 },
+        paymentMethod: {
+          type: 'string',
+          enum: ['CASH', 'CREDIT_CARD', 'COMPANY'],
+          example: 'CREDIT_CARD',
+        },
+      },
+      required: ['reservationId', 'amount', 'paymentMethod'],
     },
-    required: ['reservationId', 'amount', 'paymentMethod'],
-  }})
+  })
   @ApiResponse({ status: 201, description: 'Billing record created.' })
-  create(@Body() dto: { reservationId: string; amount: number; paymentMethod: string }) {
+  create(
+    @Body()
+    dto: {
+      reservationId: string;
+      amount: number;
+      paymentMethod: string;
+    },
+  ) {
     return this.billingService.create(dto);
   }
 
@@ -33,7 +53,11 @@ export class BillingController {
 
   @Get()
   @ApiOperation({ summary: 'List all billing records' })
-  @ApiQuery({ name: 'reservationId', required: false, description: 'Filter by reservationId' })
+  @ApiQuery({
+    name: 'reservationId',
+    required: false,
+    description: 'Filter by reservationId',
+  })
   @ApiResponse({ status: 200, description: 'List of billing records.' })
   getAll(@Query('reservationId') reservationId?: string) {
     if (reservationId) {

@@ -20,15 +20,18 @@ import {
   ApiBody,
   ApiParam,
 } from '@nestjs/swagger';
+import { RolesGuard } from '../common/roles.guard';
+import { Roles } from '../common/roles.decorator';
 
 @ApiTags('Rooms')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('rooms')
 export class RoomsController {
   constructor(private readonly roomsService: RoomsService) {}
 
   @Post()
+  @Roles('MANAGER')
   @ApiOperation({ summary: 'Create a new room' })
   @ApiBody({ type: CreateRoomDto })
   @ApiResponse({ status: 201, description: 'Room created.' })
@@ -53,6 +56,7 @@ export class RoomsController {
   }
 
   @Patch(':id')
+  @Roles('MANAGER')
   @ApiOperation({ summary: 'Update a room' })
   @ApiParam({ name: 'id', type: String })
   @ApiBody({ type: UpdateRoomDto })
@@ -63,6 +67,7 @@ export class RoomsController {
   }
 
   @Delete(':id')
+  @Roles('MANAGER')
   @ApiOperation({ summary: 'Delete a room' })
   @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 200, description: 'Room deleted.' })

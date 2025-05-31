@@ -24,15 +24,19 @@ import {
   ApiParam,
   ApiQuery,
 } from '@nestjs/swagger';
+import { RolesGuard } from '../common/roles.guard';
+import { Roles } from '../common/roles.decorator';
 
 @ApiTags('Reservations')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('reservations')
 export class ReservationsController {
   constructor(private readonly reservationsService: ReservationsService) {}
 
+  // CUSTOMER ENDPOINTS
   @Post()
+  @Roles('CUSTOMER')
   @ApiOperation({ summary: 'Create a new reservation' })
   @ApiBody({ type: CreateReservationDto })
   @ApiResponse({ status: 201, description: 'Reservation created.' })
@@ -40,7 +44,40 @@ export class ReservationsController {
     return this.reservationsService.create(dto, req.user.userId);
   }
 
+  @Get('my')
+  @Roles('CUSTOMER')
+  @ApiOperation({ summary: 'List all reservations for the logged-in customer' })
+  @ApiResponse({ status: 200, description: 'List of reservations.' })
+  findMy(@Request() req) {
+    return this.reservationsService.findMyReservations(req.user.userId);
+  }
+
+  @Patch(':id')
+  @Roles('CUSTOMER')
+  @ApiOperation({ summary: 'Update a reservation' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiBody({ type: UpdateReservationDto })
+  @ApiResponse({ status: 200, description: 'Reservation updated.' })
+  update(
+    @Param('id') id: string,
+    @Request() req,
+    @Body() dto: UpdateReservationDto,
+  ) {
+    return this.reservationsService.update(id, req.user.userId, dto);
+  }
+
+  @Delete(':id')
+  @Roles('CUSTOMER')
+  @ApiOperation({ summary: 'Cancel a reservation' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: 200, description: 'Reservation cancelled.' })
+  remove(@Param('id') id: string, @Request() req) {
+    return this.reservationsService.remove(id, req.user.userId);
+  }
+
+  // CLERK ENDPOINTS
   @Post('/checkin/email')
+  @Roles('CLERK', 'MANAGER')
   @ApiOperation({
     summary:
       'Check in a customer with email (checks for pending reservation and checks in if found)',
@@ -63,6 +100,7 @@ export class ReservationsController {
   }
 
   @Post('/checkin/manual')
+  @Roles('CLERK', 'MANAGER')
   @ApiOperation({
     summary:
       'Check in a customer without prior reservation (creates and checks in)',
@@ -76,51 +114,8 @@ export class ReservationsController {
     return this.reservationsService.manualCheckIn(dto);
   }
 
-  @Get('my')
-  @ApiOperation({ summary: 'List all reservations for the logged-in customer' })
-  @ApiResponse({ status: 200, description: 'List of reservations.' })
-  findMy(@Request() req) {
-    return this.reservationsService.findMyReservations(req.user.userId);
-  }
-
-  @Get()
-  @ApiOperation({
-    summary: 'List/search all reservations (for desk management)',
-  })
-  @ApiQuery({
-    name: 'status',
-    required: false,
-    description: 'Filter by reservation status',
-  })
-  @ApiQuery({
-    name: 'roomType',
-    required: false,
-    description: 'Filter by room type',
-  })
-  @ApiQuery({
-    name: 'customerId',
-    required: false,
-    description: 'Filter by customer id',
-  })
-  @ApiResponse({ status: 200, description: 'List of all reservations.' })
-  findAll(@Query() query) {
-    return this.reservationsService.findAll(query);
-  }
-
-  @Patch(':id')
-  @ApiOperation({ summary: 'Update a reservation' })
-  @ApiParam({ name: 'id', type: String })
-  @ApiBody({ type: UpdateReservationDto })
-  @ApiResponse({ status: 200, description: 'Reservation updated.' })
-  update(
-    @Param('id') id: string,
-    @Request() req,
-    @Body() dto: UpdateReservationDto,
-  ) {
-    return this.reservationsService.update(id, req.user.userId, dto);
-  }
-
   @Patch(':id/checkout')
+  @Roles('CLERK', 'MANAGER')
   @ApiOperation({ summary: 'Check out a customer' })
   @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 200, description: 'Customer checked out.' })
@@ -129,6 +124,7 @@ export class ReservationsController {
   }
 
   @Patch(':id/checkout-date')
+  @Roles('CLERK', 'MANAGER')
   @ApiOperation({ summary: 'Change the checkout date for a reservation' })
   @ApiParam({ name: 'id', type: String })
   @ApiBody({
@@ -157,11 +153,28 @@ export class ReservationsController {
     );
   }
 
-  @Delete(':id')
-  @ApiOperation({ summary: 'Cancel a reservation' })
-  @ApiParam({ name: 'id', type: String })
-  @ApiResponse({ status: 200, description: 'Reservation cancelled.' })
-  remove(@Param('id') id: string, @Request() req) {
-    return this.reservationsService.remove(id, req.user.userId);
+  @Get()
+  @Roles('CLERK', 'MANAGER')
+  @ApiOperation({
+    summary: 'List/search all reservations (for desk management)',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    description: 'Filter by reservation status',
+  })
+  @ApiQuery({
+    name: 'roomType',
+    required: false,
+    description: 'Filter by room type',
+  })
+  @ApiQuery({
+    name: 'customerId',
+    required: false,
+    description: 'Filter by customer id',
+  })
+  @ApiResponse({ status: 200, description: 'List of all reservations.' })
+  findAll(@Query() query) {
+    return this.reservationsService.findAll(query);
   }
 }

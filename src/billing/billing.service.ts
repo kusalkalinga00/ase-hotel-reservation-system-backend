@@ -1,17 +1,32 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 
 @Injectable()
 export class BillingService {
   constructor(private readonly db: DatabaseService) {}
 
-  async create(dto: { reservationId: string; amount: number; paymentMethod: string }) {
+  async create(dto: {
+    reservationId: string;
+    amount: number;
+    paymentMethod: string;
+  }) {
     // Check if reservation exists
-    const reservation = await this.db.reservation.findUnique({ where: { id: dto.reservationId } });
+    const reservation = await this.db.reservation.findUnique({
+      where: { id: dto.reservationId },
+    });
     if (!reservation) throw new NotFoundException('Reservation not found');
     // Check if billing already exists for this reservation
-    const existing = await this.db.billingRecord.findUnique({ where: { reservationId: dto.reservationId } });
-    if (existing) throw new BadRequestException('Billing already exists for this reservation');
+    const existing = await this.db.billingRecord.findUnique({
+      where: { reservationId: dto.reservationId },
+    });
+    if (existing)
+      throw new BadRequestException(
+        'Billing already exists for this reservation',
+      );
     // Create billing record
     return this.db.billingRecord.create({
       data: {
@@ -40,7 +55,10 @@ export class BillingService {
       where: { reservationId },
       include: { reservation: true },
     });
-    if (!billing) throw new NotFoundException('Billing record not found for this reservation');
+    if (!billing)
+      throw new NotFoundException(
+        'Billing record not found for this reservation',
+      );
     return billing;
   }
 }

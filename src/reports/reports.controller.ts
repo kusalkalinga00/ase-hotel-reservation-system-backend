@@ -1,13 +1,17 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
+import { RolesGuard } from '../common/roles.guard';
+import { Roles } from '../common/roles.decorator';
 
 @ApiTags('Reports')
+@UseGuards(RolesGuard)
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Get('occupancy')
+  @Roles('MANAGER')
   @ApiOperation({
     summary: 'View hotel occupancy for present/past/future dates',
   })
@@ -23,6 +27,7 @@ export class ReportsController {
   }
 
   @Get('revenue')
+  @Roles('MANAGER')
   @ApiOperation({ summary: 'View financial/room revenue information' })
   @ApiQuery({
     name: 'startDate',
@@ -45,6 +50,7 @@ export class ReportsController {
   }
 
   @Get('no-shows')
+  @Roles('MANAGER')
   @ApiOperation({ summary: 'View no-show report' })
   @ApiQuery({
     name: 'date',
