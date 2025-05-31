@@ -99,10 +99,16 @@ export class ReservationsService {
     if (!reservation) throw new NotFoundException('Reservation not found');
     if (reservation.customerId !== userId)
       throw new ForbiddenException('Not your reservation');
-    return this.db.reservation.update({
+    const updatedReservation = await this.db.reservation.update({
       where: { id },
       data: { status: 'CHECKED_OUT' },
     });
+    // Set room status to AVAILABLE
+    await this.db.room.update({
+      where: { id: reservation.roomId },
+      data: { status: 'AVAILABLE' },
+    });
+    return updatedReservation;
   }
 
   async updateCheckoutDate(id: string, userId: string, checkOutDate: Date) {
@@ -223,10 +229,16 @@ export class ReservationsService {
     });
     if (pendingReservation) {
       // Check in the reservation
-      return this.db.reservation.update({
+      const updatedReservation = await this.db.reservation.update({
         where: { id: pendingReservation.id },
         data: { status: 'CHECKED_IN' },
       });
+      // Set room status to OCCUPIED
+      await this.db.room.update({
+        where: { id: updatedReservation.roomId },
+        data: { status: 'OCCUPIED' },
+      });
+      return updatedReservation;
     } else {
       return { message: 'No pending reservation found for this customer.' };
     }
@@ -265,7 +277,7 @@ export class ReservationsService {
     });
     if (!room) throw new NotFoundException('No available room of this type');
     // Create and check in the reservation
-    return this.db.reservation.create({
+    const reservation = await this.db.reservation.create({
       data: {
         customerId: user.id,
         roomId: room.id,
@@ -276,5 +288,11 @@ export class ReservationsService {
         status: 'CHECKED_IN',
       },
     });
+    // Set room status to OCCUPIED
+    await this.db.room.update({
+      where: { id: room.id },
+      data: { status: 'OCCUPIED' },
+    });
+    return reservation;
   }
 }
