@@ -7,6 +7,9 @@ import {
   Param,
   Delete,
   Query,
+  UseGuards,
+  Request,
+  Logger,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import {
@@ -16,14 +19,27 @@ import {
   ApiParam,
   ApiBody,
   ApiQuery,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserRole } from './user-role.enum';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Request as ExpressRequest } from 'express';
 
-@ApiTags('users')
+@ApiTags('Users')
+@ApiBearerAuth()
 @Controller('users')
+@UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get('me')
+  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiBearerAuth()
+  @ApiResponse({ status: 200, description: 'Current user info.' })
+  getMe(@Request() req) {
+    return this.usersService.findOne(req.user?.userId);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Get all users' })
