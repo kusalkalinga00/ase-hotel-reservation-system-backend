@@ -1,85 +1,77 @@
 import {
-  Body,
   Controller,
-  Delete,
   Get,
-  Param,
-  ParseIntPipe,
-  Patch,
   Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
   Query,
-  ValidationPipe,
 } from '@nestjs/common';
-
 import { UsersService } from './users.service';
-import { ApiBody, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UserRole } from './user-role.enum';
 
+@ApiTags('users')
 @Controller('users')
 export class UsersController {
-  /*
-    GET /users
-    POST /users/:id
-    PATCH /users/:id
-    DELETE /users/:id
-    */
-
   constructor(private readonly usersService: UsersService) {}
 
-  @Get() // GET /users or GET /users?role=value
+  @Post()
+  @ApiOperation({ summary: 'Create a new user' })
+  @ApiBody({ type: CreateUserDto })
+  @ApiResponse({ status: 201, description: 'User created successfully.' })
+  create(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.create(createUserDto);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all users' })
   @ApiQuery({
     name: 'role',
     required: false,
-    enum: ['CUSTOMER', 'MANAGER', 'CLERK'],
-    description: 'Filter users by role or return all users if not provided',
+    enum: UserRole,
+    description: 'Filter users by role',
   })
-  findAll(
-    @Query('role') role?: string, // Optional query parameter
-  ) {
-    return this.usersService.findAll(
-      role ? (role as 'CUSTOMER' | 'MANAGER' | 'CLERK') : undefined,
-    );
+  @ApiResponse({ status: 200, description: 'List of users.' })
+  findAll(@Query('role') role?: UserRole) {
+    return this.usersService.findAll(role);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  @ApiOperation({ summary: 'Get a user by ID' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: 200, description: 'User found.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
+  findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
 
-  @Post()
-  @ApiBody({
-    description: 'Create user payload',
-    type: CreateUserDto,
-    examples: {
-      example1: {
-        summary: 'Sample user',
-        value: {
-          username: 'john_doe',
-          email: 'john@example.com',
-          role: 'CUSTOMER',
-        },
-      },
-    },
-  })
-  create(
-    @Body(ValidationPipe)
-    createUserDTO: CreateUserDto,
-  ) {
-    return this.usersService.create(createUserDTO);
-  }
-
   @Patch(':id')
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body(ValidationPipe)
-    updateUserDTO: UpdateUserDto, // Use UpdateUserDto for partial updates
-  ) {
-    return this.usersService.update(id, updateUserDTO);
+  @ApiOperation({ summary: 'Update a user by ID' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiBody({ type: UpdateUserDto })
+  @ApiResponse({ status: 200, description: 'User updated successfully.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
+  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+    return this.usersService.update(id, updateUserDto);
   }
 
   @Delete(':id')
-  delete(@Param('id', ParseIntPipe) id: number) {
-    return this.usersService.delete(id);
+  @ApiOperation({ summary: 'Delete a user by ID' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: 200, description: 'User deleted successfully.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
+  remove(@Param('id') id: string) {
+    return this.usersService.remove(id);
   }
 }

@@ -1,67 +1,50 @@
 import { Injectable } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { NotFoundException } from '@nestjs/common';
+import { Prisma } from 'generated/prisma';
+import { DatabaseService } from 'src/database/database.service';
 
 @Injectable()
 export class UsersService {
-  private users = [
-    { id: 1, name: 'John Doe', role: 'CUSTOMER' },
-    { id: 2, name: 'Jane Smith', role: 'MANAGER' },
-    { id: 3, name: 'Alice Johnson', role: 'CLERK' },
-    { id: 4, name: 'Bob Brown', role: 'CUSTOMER' },
-    { id: 5, name: 'Charlie White', role: 'CUSTOMER' },
-  ];
+  constructor(private readonly databaseService: DatabaseService) {}
 
-  findAll(role?: 'CUSTOMER' | 'MANAGER' | 'CLERK') {
-    if (role) {
-      const roleArray = this.users.filter((user) => user.role === role);
-
-      if (roleArray.length === 0) {
-        throw new NotFoundException(`No users found with role`);
-      }
-
-      return roleArray;
-    } else {
-      return this.users;
-    }
+  async create(createUserDto: Prisma.UserCreateInput) {
+    return this.databaseService.user.create({
+      data: createUserDto,
+    });
   }
 
-  findOne(id: number) {
-    const user = this.users.find((user) => user.id === id);
+  async findAll(role?: 'CUSTOMER' | 'CLERK' | 'MANAGER' | 'TRAVEL_COMPANY') {
+    if (role)
+      return this.databaseService.user.findMany({
+        where: {
+          role,
+        },
+      });
 
-    if (!user) {
-      throw new NotFoundException(`User not found`);
-    }
-
-    return user;
+    return this.databaseService.user.findMany();
   }
 
-  create(user: CreateUserDto) {
-    const newUser = {
-      id: this.users.length + 1,
-      ...user,
-    };
-    this.users.push(newUser);
-    return newUser;
+  async findOne(id: string) {
+    return this.databaseService.user.findUnique({
+      where: {
+        id,
+      },
+    });
   }
 
-  update(id: number, updatedUser: UpdateUserDto) {
-    const userIndex = this.users.findIndex((user) => user.id === id);
-    if (userIndex > -1) {
-      this.users[userIndex] = { ...this.users[userIndex], ...updatedUser };
-      return this.users[userIndex];
-    }
-    return null;
+  async update(id: string, updateUserDto: Prisma.UserUpdateInput) {
+    return this.databaseService.user.update({
+      where: {
+        id,
+      },
+      data: updateUserDto,
+    });
   }
 
-  delete(id: number) {
-    const userIndex = this.users.findIndex((user) => user.id === id);
-    if (userIndex > -1) {
-      const deletedUser = this.users[userIndex];
-      this.users.splice(userIndex, 1);
-      return deletedUser;
-    }
-    return null;
+  async remove(id: string) {
+    return this.databaseService.user.delete({
+      where: {
+        id,
+      },
+    });
   }
 }
