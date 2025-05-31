@@ -25,20 +25,30 @@ export class UsersService {
   }
 
   async findAll(role?: 'CUSTOMER' | 'CLERK' | 'MANAGER' | 'TRAVEL_COMPANY') {
-    if (role)
-      return this.databaseService.user.findMany({
-        where: {
-          role,
-        },
-      });
-
-    return this.databaseService.user.findMany();
+    const where = role ? { role } : {};
+    return this.databaseService.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
   }
 
   async findOne(id: string) {
     return this.databaseService.user.findUnique({
-      where: {
-        id,
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
   }
