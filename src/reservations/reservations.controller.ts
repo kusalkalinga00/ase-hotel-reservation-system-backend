@@ -13,6 +13,7 @@ import {
 import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
+import { CheckInDto } from './dto/create-reservation.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import {
   ApiTags,
@@ -39,14 +40,40 @@ export class ReservationsController {
     return this.reservationsService.create(dto, req.user.userId);
   }
 
-  @Post('/checkin')
+  @Post('/checkin/email')
   @ApiOperation({
-    summary: 'Check in a customer (with or without prior reservation)',
+    summary:
+      'Check in a customer with email (checks for pending reservation and checks in if found)',
   })
-  @ApiBody({ type: CreateReservationDto })
-  @ApiResponse({ status: 200, description: 'Customer checked in.' })
-  checkIn(@Request() req, @Body() dto: CreateReservationDto) {
-    return this.reservationsService.checkIn(dto, req.user.userId);
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', example: 'customer@example.com' },
+      },
+      required: ['email'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Customer checked in if pending reservation exists.',
+  })
+  async checkInWithEmail(@Body() body: { email: string }) {
+    return this.reservationsService.checkInWithEmail(body.email);
+  }
+
+  @Post('/checkin/manual')
+  @ApiOperation({
+    summary:
+      'Check in a customer without prior reservation (creates and checks in)',
+  })
+  @ApiBody({ type: CheckInDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Customer checked in with new reservation.',
+  })
+  async manualCheckIn(@Body() dto: CheckInDto) {
+    return this.reservationsService.manualCheckIn(dto);
   }
 
   @Get('my')
