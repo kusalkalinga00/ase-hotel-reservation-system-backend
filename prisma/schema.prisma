@@ -1,0 +1,101 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  refreshToken String?
+  reservations Reservation[] 
+}
+
+model Reservation {
+  id            String   @id @default(uuid())
+  customer      User     @relation(fields: [customerId], references: [id])
+  customerId    String
+  room          Room     @relation(fields: [roomId], references: [id])
+  roomId        String
+  checkInDate   DateTime
+  checkOutDate  DateTime
+  status        ReservationStatus @default(PENDING)
+  occupants     Int
+  creditCard    String? // nullable if not provided
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  billingRecord BillingRecord?
+}
+
+model Room {
+  id           String   @id @default(uuid())
+  number       String   @unique
+  type         RoomType
+  status       RoomStatus @default(AVAILABLE)
+  rate         Float
+  reservations Reservation[]
+}
+
+model BillingRecord {
+  id             String   @id @default(uuid())
+  reservation    Reservation @relation(fields: [reservationId], references: [id])
+  reservationId  String   @unique // Make this unique for 1-1 relation
+  amount         Float
+  paymentMethod  PaymentMethod
+  createdAt      DateTime @default(now())
+}
+
+enum Role {
+  CUSTOMER
+  CLERK
+  MANAGER
+  TRAVEL_COMPANY
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  CHECKED_IN
+  CHECKED_OUT
+  NO_SHOW
+}
+
+enum RoomType {
+  STANDARD
+  DELUXE
+  SUITE
+  RESIDENTIAL_SUITE
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+  RESERVED
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  COMPANY
+}
+
+
+
