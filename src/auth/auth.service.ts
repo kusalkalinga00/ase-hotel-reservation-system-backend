@@ -17,7 +17,7 @@ export class AuthService {
   ) {}
 
   async register(registerAuthDto: RegisterAuthDto) {
-    const { email, name, password } = registerAuthDto;
+    const { email, name, password, role } = registerAuthDto;
     const existingUser = await this.databaseService.user.findUnique({
       where: { email },
     });
@@ -30,11 +30,32 @@ export class AuthService {
         email,
         name,
         password: hashedPassword,
+        role: role || 'CUSTOMER',
       },
     });
     // Remove password from response
-    const { password: _, ...result } = user;
-    return result;
+    const { password: _, ...userData } = user;
+    // Generate JWT tokens (same as login)
+    const token = this.jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
+    const refreshToken = this.jwtService.sign(
+      { sub: user.id },
+      { secret: 'your_refresh_secret', expiresIn: '7d' },
+    );
+    // Store hashed refresh token in DB
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+    await this.databaseService.user.update({
+      where: { id: user.id },
+      data: { refreshToken: hashedRefreshToken },
+    });
+    return {
+      token,
+      refreshToken,
+      user: userData,
+    };
   }
 
   async login(loginAuthDto: LoginAuthDto) {
