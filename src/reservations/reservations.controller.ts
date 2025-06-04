@@ -120,7 +120,11 @@ export class ReservationsController {
   @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 200, description: 'Customer checked out.' })
   checkout(@Param('id') id: string, @Request() req) {
-    return this.reservationsService.checkout(id, req.user.userId, req.user.role);
+    return this.reservationsService.checkout(
+      id,
+      req.user.userId,
+      req.user.role,
+    );
   }
 
   @Patch(':id/checkout-date')

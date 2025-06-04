@@ -16,22 +16,22 @@ import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import {
   ApiTags,
-  ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiBody,
   ApiParam,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 
 @ApiTags('Room Categories')
-@ApiBearerAuth()
 @Controller('room-categories')
 export class RoomCategoriesController {
   constructor(private readonly roomCategoriesService: RoomCategoriesService) {}
 
   @Post()
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('MANAGER')
+  @Roles('MANAGER', 'CLERK')
   @ApiOperation({ summary: 'Create a new room category' })
   @ApiBody({
     type: CreateRoomCategoryDto,
@@ -65,28 +65,38 @@ export class RoomCategoriesController {
     },
   })
   @ApiResponse({ status: 201, description: 'Room category created.' })
-  create(@Body() createRoomCategoryDto: CreateRoomCategoryDto) {
-    return this.roomCategoriesService.create(createRoomCategoryDto);
+  async create(@Body() createRoomCategoryDto: CreateRoomCategoryDto) {
+    const data = await this.roomCategoriesService.create(createRoomCategoryDto);
+    return { message: 'Room category created successfully', data };
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all room categories' })
+  @ApiOperation({
+    summary: 'Get all room categories',
+    description: 'Public endpoint. No authentication required.',
+  })
   @ApiResponse({ status: 200, description: 'List of room categories.' })
-  findAll() {
-    return this.roomCategoriesService.findAll();
+  async findAll() {
+    const data = await this.roomCategoriesService.findAll();
+    return { message: 'Room categories fetched successfully', data };
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a room category by ID' })
+  @ApiOperation({
+    summary: 'Get a room category by ID',
+    description: 'Public endpoint. No authentication required.',
+  })
   @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 200, description: 'Room category found.' })
-  findOne(@Param('id') id: string) {
-    return this.roomCategoriesService.findOne(id);
+  async findOne(@Param('id') id: string) {
+    const data = await this.roomCategoriesService.findOne(id);
+    return { message: 'Room category fetched successfully', data };
   }
 
+  @ApiBearerAuth()
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('MANAGER')
+  @Roles('MANAGER', 'CLERK')
   @ApiOperation({ summary: 'Update a room category' })
   @ApiParam({ name: 'id', type: String })
   @ApiBody({
@@ -103,20 +113,26 @@ export class RoomCategoriesController {
     },
   })
   @ApiResponse({ status: 200, description: 'Room category updated.' })
-  update(
+  async update(
     @Param('id') id: string,
     @Body() updateRoomCategoryDto: UpdateRoomCategoryDto,
   ) {
-    return this.roomCategoriesService.update(id, updateRoomCategoryDto);
+    const data = await this.roomCategoriesService.update(
+      id,
+      updateRoomCategoryDto,
+    );
+    return { message: 'Room category updated successfully', data };
   }
 
+  @ApiBearerAuth()
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('MANAGER')
+  @Roles('MANAGER', 'CLERK')
   @ApiOperation({ summary: 'Delete a room category' })
   @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 200, description: 'Room category deleted.' })
-  remove(@Param('id') id: string) {
-    return this.roomCategoriesService.remove(id);
+  async remove(@Param('id') id: string) {
+    const data = await this.roomCategoriesService.remove(id);
+    return { message: 'Room category deleted successfully', data };
   }
 }
