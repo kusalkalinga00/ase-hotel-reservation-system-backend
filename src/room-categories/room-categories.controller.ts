@@ -40,6 +40,9 @@ export class RoomCategoriesController {
         summary: 'Standard Room',
         value: {
           name: 'STANDARD',
+          description: 'A comfortable room for solo travelers or couples.',
+          amenities: ['WiFi', 'TV', 'Air Conditioning'],
+          image: 'https://example.com/standard.jpg',
           idealFor: 'Solo travelers, couples',
           capacity: 2,
           size: '20sqm',
@@ -53,6 +56,10 @@ export class RoomCategoriesController {
         summary: 'Deluxe Room',
         value: {
           name: 'DELUXE',
+          description:
+            'Spacious room with premium amenities and a garden view.',
+          amenities: ['WiFi', 'TV', 'Air Conditioning', 'Mini Bar', 'Balcony'],
+          image: 'https://example.com/deluxe.jpg',
           idealFor: 'Couples, business travelers',
           capacity: 2,
           size: '30sqm',
@@ -78,8 +85,13 @@ export class RoomCategoriesController {
   @ApiResponse({ status: 200, description: 'List of room categories.' })
   async findAll() {
     const data = await this.roomCategoriesService.findAll();
-    return { message: 'Room categories fetched successfully', data };
-  }
+    return {
+      success: true,
+      message: 'Room categories fetched successfully',
+      payload: data,
+      meta: null,
+    };
+  }a
 
   @Get(':id')
   @ApiOperation({
@@ -90,7 +102,12 @@ export class RoomCategoriesController {
   @ApiResponse({ status: 200, description: 'Room category found.' })
   async findOne(@Param('id') id: string) {
     const data = await this.roomCategoriesService.findOne(id);
-    return { message: 'Room category fetched successfully', data };
+    return {
+      success: true,
+      message: 'Room category fetched successfully',
+      payload: data,
+      meta: null,
+    };
   }
 
   @ApiBearerAuth()
@@ -105,6 +122,17 @@ export class RoomCategoriesController {
       update: {
         summary: 'Update Deluxe Room',
         value: {
+          description: 'Now includes a workspace and free breakfast.',
+          amenities: [
+            'WiFi',
+            'TV',
+            'Air Conditioning',
+            'Mini Bar',
+            'Balcony',
+            'Workspace',
+            'Free Breakfast',
+          ],
+          image: 'https://example.com/deluxe-updated.jpg',
           idealFor: 'Families, business travelers',
           capacity: 3,
           price: 200.0,
