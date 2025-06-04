@@ -9,6 +9,7 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { RoomsModule } from './rooms/rooms.module';
 import { ReportsModule } from './reports/reports.module';
 import { BillingModule } from './billing/billing.module';
+import { RoomCategoriesModule } from './room-categories/room-categories.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { BillingModule } from './billing/billing.module';
     RoomsModule,
     ReportsModule,
     BillingModule,
+    RoomCategoriesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -21,7 +21,7 @@ export class ReportsService {
         : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const end = endDate ? new Date(endDate) : new Date();
 
-    // Get all billing records in the date range, including reservation and room
+    // Get all billing records in the date range, including reservation and room and roomCategory
     const billings = await this.db.billingRecord.findMany({
       where: {
         createdAt: {
@@ -32,24 +32,30 @@ export class ReportsService {
       include: {
         reservation: {
           include: {
-            room: true, // just include the room
+            room: {
+              include: {
+                roomCategory: true,
+              },
+            },
           },
         },
       },
     });
 
-    // Calculate total revenue and breakdown by room type
+    // Calculate total revenue and breakdown by room category name
     let total = 0;
-    const byRoomType: Record<string, number> = {};
+    const byRoomCategory: Record<string, number> = {};
     for (const billing of billings) {
       total += billing.amount;
-      const type = billing.reservation.room.type ?? 'Unknown';
-      byRoomType[type] = (byRoomType[type] || 0) + billing.amount;
+      const category =
+        billing.reservation.room?.roomCategory?.name ?? 'Unknown';
+      byRoomCategory[category] =
+        (byRoomCategory[category] || 0) + billing.amount;
     }
 
     return {
       totalRevenue: total,
-      byRoomType,
+      byRoomCategory,
       startDate: start.toISOString().slice(0, 10),
       endDate: end.toISOString().slice(0, 10),
     };
