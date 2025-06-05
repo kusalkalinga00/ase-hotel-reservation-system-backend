@@ -5,10 +5,13 @@ export class CreateRoomDto {
   number: string;
 
   @ApiProperty({
-    example: 'room-category-uuid',
-    description: 'Room Category ID (UUID)',
+    example: 'STANDARD',
+    description: 'Room type (STANDARD, DELUXE, SUITE, RESIDENTIAL_SUITE)',
   })
-  roomCategoryId: string;
+  type: string;
+
+  @ApiProperty({ example: 100.0, description: 'Room rate' })
+  rate: number;
 
   @ApiPropertyOptional({
     example: 'AVAILABLE',

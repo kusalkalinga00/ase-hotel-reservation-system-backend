@@ -11,15 +11,14 @@ export class ReservationsService {
   constructor(private readonly db: DatabaseService) {}
 
   async create(createDto: any, userId: string) {
-    // Find an available room of the requested category
+    // Find an available room of the requested type
     const room = await this.db.room.findFirst({
       where: {
-        roomCategoryId: createDto.roomCategoryId,
+        type: createDto.roomType,
         status: 'AVAILABLE',
       },
     });
-    if (!room)
-      throw new NotFoundException('No available room of this category');
+    if (!room) throw new NotFoundException('No available room of this type');
     // Create reservation
     return this.db.reservation.create({
       data: {
@@ -77,12 +76,11 @@ export class ReservationsService {
     // Otherwise, create a new reservation and set status to CHECKED_IN
     const room = await this.db.room.findFirst({
       where: {
-        roomCategoryId: createDto.roomCategoryId,
+        type: createDto.roomType,
         status: 'AVAILABLE',
       },
     });
-    if (!room)
-      throw new NotFoundException('No available room of this category');
+    if (!room) throw new NotFoundException('No available room of this type');
     return this.db.reservation.create({
       data: {
         customerId: customerId,
@@ -96,17 +94,11 @@ export class ReservationsService {
     });
   }
 
-  async checkout(id: string, userId: string, userRole?: string) {
+  async checkout(id: string, userId: string) {
     const reservation = await this.db.reservation.findUnique({ where: { id } });
     if (!reservation) throw new NotFoundException('Reservation not found');
-    // Allow if user is the customer, or if user is CLERK or MANAGER
-    if (
-      reservation.customerId !== userId &&
-      userRole !== 'CLERK' &&
-      userRole !== 'MANAGER'
-    ) {
+    if (reservation.customerId !== userId)
       throw new ForbiddenException('Not your reservation');
-    }
     const updatedReservation = await this.db.reservation.update({
       where: { id },
       data: { status: 'CHECKED_OUT' },
@@ -131,11 +123,11 @@ export class ReservationsService {
   }
 
   async findAll(query: any) {
-    const { status, roomCategoryId, customerId } = query;
+    const { status, roomType, customerId } = query;
     return this.db.reservation.findMany({
       where: {
         status: status || undefined,
-        room: roomCategoryId ? { roomCategoryId } : undefined,
+        room: roomType ? { type: roomType } : undefined,
         customerId: customerId || undefined,
       },
       include: { room: true, customer: true },
@@ -168,7 +160,7 @@ export class ReservationsService {
 
     // If only email is provided, check for any pending reservation
     if (
-      !createDto.roomCategoryId &&
+      !createDto.roomType &&
       !createDto.checkInDate &&
       !createDto.checkOutDate &&
       !createDto.occupants
@@ -188,30 +180,29 @@ export class ReservationsService {
       } else {
         return {
           message:
-            'No pending reservation found. Please provide roomCategoryId, checkInDate, checkOutDate, and occupants to create a new reservation and check in.',
+            'No pending reservation found. Please provide roomType, checkInDate, checkOutDate, and occupants to create a new reservation and check in.',
         };
       }
     }
 
     // Otherwise, create a new reservation and set status to CHECKED_IN
     if (
-      !createDto.roomCategoryId ||
+      !createDto.roomType ||
       !createDto.checkInDate ||
       !createDto.checkOutDate ||
       !createDto.occupants
     ) {
       throw new BadRequestException(
-        'Missing required fields to create a new reservation: roomCategoryId, checkInDate, checkOutDate, occupants',
+        'Missing required fields to create a new reservation: roomType, checkInDate, checkOutDate, occupants',
       );
     }
     const room = await this.db.room.findFirst({
       where: {
-        roomCategoryId: createDto.roomCategoryId,
+        type: createDto.roomType,
         status: 'AVAILABLE',
       },
     });
-    if (!room)
-      throw new NotFoundException('No available room of this category');
+    if (!room) throw new NotFoundException('No available room of this type');
     return this.db.reservation.create({
       data: {
         customerId: user.id,
@@ -268,24 +259,23 @@ export class ReservationsService {
     }
     // Validate required fields
     if (
-      !dto.roomCategoryId ||
+      !dto.roomType ||
       !dto.checkInDate ||
       !dto.checkOutDate ||
       !dto.occupants
     ) {
       throw new BadRequestException(
-        'Missing required fields: roomCategoryId, checkInDate, checkOutDate, occupants',
+        'Missing required fields: roomType, checkInDate, checkOutDate, occupants',
       );
     }
     // Find an available room
     const room = await this.db.room.findFirst({
       where: {
-        roomCategoryId: dto.roomCategoryId,
+        type: dto.roomType,
         status: 'AVAILABLE',
       },
     });
-    if (!room)
-      throw new NotFoundException('No available room of this category');
+    if (!room) throw new NotFoundException('No available room of this type');
     // Create and check in the reservation
     const reservation = await this.db.reservation.create({
       data: {
