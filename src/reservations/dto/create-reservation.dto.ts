@@ -27,6 +27,18 @@ export class CreateReservationDto {
     description: 'Credit card number (optional)',
   })
   creditCard?: string;
+
+  @ApiPropertyOptional({
+    example: '12/27',
+    description: 'Credit card expiry (optional, MM/YY or MM/YYYY)',
+  })
+  creditCardExpiry?: string;
+
+  @ApiPropertyOptional({
+    example: '123',
+    description: 'Credit card CVV (optional)',
+  })
+  creditCardCVV?: string;
 }
 
 export class CheckInDto {
@@ -62,4 +74,16 @@ export class CheckInDto {
     description: 'Credit card number (optional)',
   })
   creditCard?: string;
+
+  @ApiPropertyOptional({
+    example: '12/27',
+    description: 'Credit card expiry (optional, MM/YY or MM/YYYY)',
+  })
+  creditCardExpiry?: string;
+
+  @ApiPropertyOptional({
+    example: '123',
+    description: 'Credit card CVV (optional)',
+  })
+  creditCardCVV?: string;
 }

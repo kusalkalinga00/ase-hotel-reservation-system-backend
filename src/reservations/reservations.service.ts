@@ -29,6 +29,8 @@ export class ReservationsService {
         checkOutDate: createDto.checkOutDate,
         occupants: createDto.occupants,
         creditCard: createDto.creditCard,
+        creditCardExpiry: createDto.creditCardExpiry,
+        creditCardCVV: createDto.creditCardCVV,
       },
     });
   }
@@ -91,6 +93,8 @@ export class ReservationsService {
         checkOutDate: createDto.checkOutDate,
         occupants: createDto.occupants,
         creditCard: createDto.creditCard,
+        creditCardExpiry: createDto.creditCardExpiry,
+        creditCardCVV: createDto.creditCardCVV,
         status: 'CHECKED_IN',
       },
     });
@@ -220,6 +224,8 @@ export class ReservationsService {
         checkOutDate: createDto.checkOutDate,
         occupants: createDto.occupants,
         creditCard: createDto.creditCard,
+        creditCardExpiry: createDto.creditCardExpiry,
+        creditCardCVV: createDto.creditCardCVV,
         status: 'CHECKED_IN',
       },
     });
@@ -295,6 +301,8 @@ export class ReservationsService {
         checkOutDate: dto.checkOutDate,
         occupants: dto.occupants,
         creditCard: dto.creditCard,
+        creditCardExpiry: dto.creditCardExpiry,
+        creditCardCVV: dto.creditCardCVV,
         status: 'CHECKED_IN',
       },
     });

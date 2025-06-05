@@ -38,6 +38,8 @@ model Reservation {
   status        ReservationStatus @default(PENDING)
   occupants     Int
   creditCard    String? // nullable if not provided
+  creditCardExpiry String? // nullable if not provided
+  creditCardCVV String? // nullable if not provided
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   billingRecord BillingRecord?
