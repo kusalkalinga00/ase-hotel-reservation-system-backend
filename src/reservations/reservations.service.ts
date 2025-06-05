@@ -14,7 +14,7 @@ export class ReservationsService {
     // Find an available room of the requested type
     const room = await this.db.room.findFirst({
       where: {
-        type: createDto.roomType,
+        roomCategory: { name: createDto.roomType },
         status: 'AVAILABLE',
       },
     });
@@ -76,7 +76,7 @@ export class ReservationsService {
     // Otherwise, create a new reservation and set status to CHECKED_IN
     const room = await this.db.room.findFirst({
       where: {
-        type: createDto.roomType,
+        roomCategory: { name: createDto.roomType },
         status: 'AVAILABLE',
       },
     });
@@ -127,10 +127,10 @@ export class ReservationsService {
     return this.db.reservation.findMany({
       where: {
         status: status || undefined,
-        room: roomType ? { type: roomType } : undefined,
+        room: roomType ? { roomCategory: { name: roomType } } : undefined,
         customerId: customerId || undefined,
       },
-      include: { room: true, customer: true },
+      include: { room: { include: { roomCategory: true } }, customer: true },
     });
   }
 
@@ -198,7 +198,7 @@ export class ReservationsService {
     }
     const room = await this.db.room.findFirst({
       where: {
-        type: createDto.roomType,
+        roomCategory: { name: createDto.roomType },
         status: 'AVAILABLE',
       },
     });
@@ -271,7 +271,7 @@ export class ReservationsService {
     // Find an available room
     const room = await this.db.room.findFirst({
       where: {
-        type: dto.roomType,
+        roomCategory: { name: dto.roomType },
         status: 'AVAILABLE',
       },
     });

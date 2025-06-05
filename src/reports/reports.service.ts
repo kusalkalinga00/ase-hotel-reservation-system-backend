@@ -32,7 +32,7 @@ export class ReportsService {
       include: {
         reservation: {
           include: {
-            room: true, // just include the room
+            room: { include: { roomCategory: true } },
           },
         },
       },
@@ -43,7 +43,7 @@ export class ReportsService {
     const byRoomType: Record<string, number> = {};
     for (const billing of billings) {
       total += billing.amount;
-      const type = billing.reservation.room.type ?? 'Unknown';
+      const type = billing.reservation.room?.roomCategory?.name ?? 'Unknown';
       byRoomType[type] = (byRoomType[type] || 0) + billing.amount;
     }
 
