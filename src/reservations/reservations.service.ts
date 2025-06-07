@@ -345,4 +345,25 @@ export class ReservationsService {
     });
     return reservation;
   }
+
+  async checkInById(id: string, user: any) {
+    const reservation = await this.db.reservation.findUnique({ where: { id } });
+    if (!reservation) throw new NotFoundException('Reservation not found');
+    if (reservation.status !== 'PENDING') {
+      throw new BadRequestException(
+        'Reservation is not pending and cannot be checked in',
+      );
+    }
+    // Set reservation status to CHECKED_IN
+    const updatedReservation = await this.db.reservation.update({
+      where: { id },
+      data: { status: 'CHECKED_IN' },
+    });
+    // Set room status to OCCUPIED
+    await this.db.room.update({
+      where: { id: reservation.roomId },
+      data: { status: 'OCCUPIED' },
+    });
+    return updatedReservation;
+  }
 }

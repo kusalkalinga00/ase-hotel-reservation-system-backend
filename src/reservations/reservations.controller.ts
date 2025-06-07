@@ -181,4 +181,16 @@ export class ReservationsController {
   findAll(@Query() query) {
     return this.reservationsService.findAll(query);
   }
+
+  @Patch(':id/checkin')
+  @Roles('CLERK', 'MANAGER')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({
+    summary: 'Check in a customer by reservation id (clerk/manager only)',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: 200, description: 'Customer checked in.' })
+  async checkInById(@Param('id') id: string, @Request() req) {
+    return this.reservationsService.checkInById(id, req.user);
+  }
 }
