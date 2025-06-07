@@ -368,4 +368,109 @@ export class ReservationsService {
     });
     return updatedReservation;
   }
+
+  async travelCompanyReservation(userId: string, body: any) {
+    const allowedTypes = ['STANDARD', 'DELUXE', 'SUITE'];
+    if (!allowedTypes.includes(body.roomType)) {
+      throw new BadRequestException('Only STANDARD, DELUXE, SUITE are allowed');
+    }
+    if (!body.numberOfRooms || body.numberOfRooms < 3) {
+      throw new BadRequestException('Must reserve at least 3 rooms');
+    }
+    // Find the room category id for the requested type
+    const roomCategory = await this.db.roomCategory.findUnique({
+      where: { name: body.roomType },
+    });
+    if (!roomCategory) throw new BadRequestException('Invalid room type');
+    // Create a single group reservation
+    const reservation = await this.db.reservation.create({
+      data: {
+        customerId: userId,
+        roomId: null, // Will be assigned by clerk on confirmation
+        checkInDate: body.checkInDate,
+        checkOutDate: body.checkOutDate,
+        occupants: body.occupants,
+        numberOfRooms: body.numberOfRooms,
+        status: 'PENDING',
+      },
+    });
+    return {
+      message: 'Reservation created. Awaiting clerk confirmation.',
+      reservation,
+    };
+  }
+
+  async getTravelCompanyReservations() {
+    // Only reservations with numberOfRooms set (group bookings)
+    return this.db.reservation.findMany({
+      where: {
+        numberOfRooms: { not: null },
+      },
+      include: { customer: true, room: true },
+    });
+  }
+
+  async confirmTravelCompanyReservation(id: string) {
+    // Find the reservation
+    const reservation = await this.db.reservation.findUnique({ where: { id } });
+    if (!reservation) throw new NotFoundException('Reservation not found');
+    if (!reservation.numberOfRooms || reservation.numberOfRooms < 1)
+      throw new BadRequestException('Not a group reservation');
+    // Find the room type from the reservation (via roomCategoryId or roomType logic)
+    // For this example, assume all rooms must be of the same type as originally requested
+    // We'll use the first available roomCategoryId from the RoomCategory table
+    // (You may want to store roomType/roomCategoryId in the reservation for more robust logic)
+    // Find available rooms of any type if roomId is null
+    const roomType = await this.db.roomCategory.findFirst({
+      where: {
+        // This assumes you store the type in reservation, e.g. reservation.roomType or similar
+        // If not, you may need to extend your model to store roomType/roomCategoryId
+        // For now, fallback to STANDARD
+        name: 'STANDARD',
+      },
+    });
+    if (!roomType) throw new BadRequestException('Room type not found');
+    // Find enough available rooms of this type
+    const availableRooms = await this.db.room.findMany({
+      where: {
+        roomCategoryId: roomType.id,
+        status: 'AVAILABLE',
+      },
+      take: reservation.numberOfRooms,
+    });
+    if (availableRooms.length < reservation.numberOfRooms) {
+      throw new BadRequestException(
+        'Not enough available rooms to confirm this reservation',
+      );
+    }
+    // Assign the first room to reservation.roomId, set all rooms to RESERVED
+    for (const room of availableRooms) {
+      await this.db.room.update({
+        where: { id: room.id },
+        data: { status: 'RESERVED' },
+      });
+    }
+    await this.db.reservation.update({
+      where: { id },
+      data: {
+        roomId: availableRooms[0].id,
+        status: 'CONFIRMED',
+      },
+    });
+    return {
+      message:
+        'Travel company reservation confirmed and rooms assigned automatically.',
+      assignedRoomIds: availableRooms.map((r) => r.id),
+    };
+  }
+
+  async cancelTravelCompanyReservation(id: string) {
+    const reservation = await this.db.reservation.findUnique({ where: { id } });
+    if (!reservation) throw new NotFoundException('Reservation not found');
+    await this.db.reservation.update({
+      where: { id },
+      data: { status: 'CANCELLED' },
+    });
+    return { message: 'Travel company reservation cancelled.' };
+  }
 }

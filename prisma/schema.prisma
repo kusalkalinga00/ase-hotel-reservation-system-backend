@@ -31,12 +31,13 @@ model Reservation {
   id            String   @id @default(uuid())
   customer      User     @relation(fields: [customerId], references: [id])
   customerId    String
-  room          Room     @relation(fields: [roomId], references: [id])
-  roomId        String
+  room          Room?    @relation(fields: [roomId], references: [id])
+  roomId        String?  // Now optional for travel company reservations
   checkInDate   DateTime
   checkOutDate  DateTime
   status        ReservationStatus @default(PENDING)
   occupants     Int
+  numberOfRooms Int? // For travel company group bookings
   creditCard    String? // nullable if not provided
   creditCardExpiry String? // nullable if not provided
   creditCardCVV String? // nullable if not provided
