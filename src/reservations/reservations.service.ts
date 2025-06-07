@@ -47,10 +47,10 @@ export class ReservationsService {
     });
   }
 
-  async update(id: string, userId: string, updateDto: any) {
+  async update(id: string, userId: string, userRole: string, updateDto: any) {
     const reservation = await this.db.reservation.findUnique({ where: { id } });
     if (!reservation) throw new NotFoundException('Reservation not found');
-    if (reservation.customerId !== userId)
+    if (userRole === 'CUSTOMER' && reservation.customerId !== userId)
       throw new ForbiddenException('Not your reservation');
     // If status is being set to CANCELLED, set room to AVAILABLE
     if (updateDto.status === 'CANCELLED') {
@@ -65,11 +65,13 @@ export class ReservationsService {
     });
   }
 
-  async remove(id: string, userId: string) {
+  async remove(id: string, userId: string, userRole?: string) {
     const reservation = await this.db.reservation.findUnique({ where: { id } });
     if (!reservation) throw new NotFoundException('Reservation not found');
-    if (reservation.customerId !== userId)
+    // Only restrict customers to their own reservations
+    if (userRole === 'CUSTOMER' && reservation.customerId !== userId) {
       throw new ForbiddenException('Not your reservation');
+    }
     return this.db.reservation.delete({ where: { id } });
   }
 

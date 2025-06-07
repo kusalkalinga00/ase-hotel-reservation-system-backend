@@ -53,7 +53,7 @@ export class ReservationsController {
   }
 
   @Patch(':id')
-  @Roles('CUSTOMER')
+  @Roles('CUSTOMER', 'CLERK')
   @ApiOperation({ summary: 'Update a reservation' })
   @ApiParam({ name: 'id', type: String })
   @ApiBody({ type: UpdateReservationDto })
@@ -63,16 +63,21 @@ export class ReservationsController {
     @Request() req,
     @Body() dto: UpdateReservationDto,
   ) {
-    return this.reservationsService.update(id, req.user.userId, dto);
+    return this.reservationsService.update(
+      id,
+      req.user.userId,
+      req.user.role,
+      dto,
+    );
   }
 
   @Delete(':id')
-  @Roles('CUSTOMER')
+  @Roles('CUSTOMER', 'CLERK')
   @ApiOperation({ summary: 'Cancel a reservation' })
   @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 200, description: 'Reservation cancelled.' })
   remove(@Param('id') id: string, @Request() req) {
-    return this.reservationsService.remove(id, req.user.userId);
+    return this.reservationsService.remove(id, req.user.userId, req.user.role);
   }
 
   // CLERK ENDPOINTS
