@@ -20,6 +20,11 @@ export class ReservationsService {
     });
     if (!room)
       throw new NotFoundException('No available room of this category');
+    // Set room status to RESERVED
+    await this.db.room.update({
+      where: { id: room.id },
+      data: { status: 'RESERVED' },
+    });
     // Create reservation
     return this.db.reservation.create({
       data: {
@@ -47,6 +52,13 @@ export class ReservationsService {
     if (!reservation) throw new NotFoundException('Reservation not found');
     if (reservation.customerId !== userId)
       throw new ForbiddenException('Not your reservation');
+    // If status is being set to CANCELLED, set room to AVAILABLE
+    if (updateDto.status === 'CANCELLED') {
+      await this.db.room.update({
+        where: { id: reservation.roomId },
+        data: { status: 'AVAILABLE' },
+      });
+    }
     return this.db.reservation.update({
       where: { id },
       data: updateDto,
@@ -71,6 +83,11 @@ export class ReservationsService {
       },
     });
     if (reservation) {
+      // Set room status to OCCUPIED
+      await this.db.room.update({
+        where: { id: reservation.roomId },
+        data: { status: 'OCCUPIED' },
+      });
       return this.db.reservation.update({
         where: { id: reservation.id },
         data: { status: 'CHECKED_IN' },
@@ -85,6 +102,11 @@ export class ReservationsService {
     });
     if (!room)
       throw new NotFoundException('No available room of this category');
+    // Set room status to OCCUPIED
+    await this.db.room.update({
+      where: { id: room.id },
+      data: { status: 'OCCUPIED' },
+    });
     return this.db.reservation.create({
       data: {
         customerId: customerId,
@@ -163,6 +185,11 @@ export class ReservationsService {
         },
       });
       if (reservation) {
+        // Set room status to OCCUPIED
+        await this.db.room.update({
+          where: { id: reservation.roomId },
+          data: { status: 'OCCUPIED' },
+        });
         return this.db.reservation.update({
           where: { id: reservation.id },
           data: { status: 'CHECKED_IN' },
@@ -216,6 +243,11 @@ export class ReservationsService {
     });
     if (!room)
       throw new NotFoundException('No available room of this category');
+    // Set room status to OCCUPIED
+    await this.db.room.update({
+      where: { id: room.id },
+      data: { status: 'OCCUPIED' },
+    });
     return this.db.reservation.create({
       data: {
         customerId: user.id,
@@ -292,6 +324,11 @@ export class ReservationsService {
     });
     if (!room)
       throw new NotFoundException('No available room of this category');
+    // Set room status to OCCUPIED
+    await this.db.room.update({
+      where: { id: room.id },
+      data: { status: 'OCCUPIED' },
+    });
     // Create and check in the reservation
     const reservation = await this.db.reservation.create({
       data: {
@@ -305,11 +342,6 @@ export class ReservationsService {
         creditCardCVV: dto.creditCardCVV,
         status: 'CHECKED_IN',
       },
-    });
-    // Set room status to OCCUPIED
-    await this.db.room.update({
-      where: { id: room.id },
-      data: { status: 'OCCUPIED' },
     });
     return reservation;
   }
