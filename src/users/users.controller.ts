@@ -25,6 +25,8 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UserRole } from './user-role.enum';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Request as ExpressRequest } from 'express';
+import { RolesGuard } from '../common/roles.guard';
+import { Roles } from '../common/roles.decorator';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -80,5 +82,28 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User not found.' })
   remove(@Param('id') id: string) {
     return this.usersService.remove(id);
+  }
+
+  @Post('register-travel-company')
+  @Roles('CLERK', 'MANAGER')
+  @ApiOperation({
+    summary: 'Register a new travel company (clerk/manager only)',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', example: 'travel@company.com' },
+        password: { type: 'string', example: 'securepassword' },
+        name: { type: 'string', example: 'Travel Company Inc.' },
+      },
+      required: ['email', 'password', 'name'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Travel company registered.' })
+  async registerTravelCompany(
+    @Body() body: { email: string; password: string; name: string },
+  ) {
+    return this.usersService.createTravelCompany(body);
   }
 }
