@@ -6,7 +6,6 @@ export class ReportsService {
   constructor(private readonly db: DatabaseService) {}
 
   async getOccupancy(date?: string) {
-    // TODO: Implement actual occupancy logic
     return {
       message: 'Occupancy report',
       date: date || new Date().toISOString().slice(0, 10),
