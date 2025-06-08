@@ -45,8 +45,11 @@ export class ReservationsController {
   }
 
   @Get('my')
-  @Roles('CUSTOMER')
-  @ApiOperation({ summary: 'List all reservations for the logged-in customer' })
+  @Roles('CUSTOMER', 'TRAVEL_COMPANY')
+  @ApiOperation({
+    summary:
+      'List all reservations for the logged-in customer or travel company',
+  })
   @ApiResponse({ status: 200, description: 'List of reservations.' })
   findMy(@Request() req) {
     return this.reservationsService.findMyReservations(req.user.userId);

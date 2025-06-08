@@ -1,11 +1,19 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @ApiTags('Reports')
-@UseGuards(RolesGuard)
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
@@ -61,5 +69,31 @@ export class ReportsController {
   @ApiResponse({ status: 200, description: 'No-show report.' })
   getNoShows(@Query('date') date?: string) {
     return this.reportsService.getNoShows(date);
+  }
+
+  @Get('manager-summary')
+  @Roles('MANAGER')
+  @ApiOperation({
+    summary: 'Manager summary: daily/monthly stats, room status, and revenue',
+  })
+  @ApiQuery({
+    name: 'period',
+    required: false,
+    description: 'Period: daily or monthly (default: daily)',
+    example: 'daily',
+  })
+  @ApiQuery({
+    name: 'date',
+    required: false,
+    description:
+      'Date (ISO 8601, default: today for daily, first of month for monthly)',
+    example: '2025-06-08',
+  })
+  @ApiResponse({ status: 200, description: 'Manager summary report.' })
+  async getManagerSummary(
+    @Query('period') period?: string,
+    @Query('date') date?: string,
+  ) {
+    return this.reportsService.getManagerSummary(period, date);
   }
 }

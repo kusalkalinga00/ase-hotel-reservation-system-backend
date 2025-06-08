@@ -68,4 +68,78 @@ export class ReportsService {
       date: date || new Date().toISOString().slice(0, 10),
     };
   }
+
+  async getManagerSummary(period?: string, date?: string) {
+    // Determine date range
+    let start: Date, end: Date;
+    const now = date ? new Date(date) : new Date();
+    if (period === 'monthly') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else {
+      // default: daily
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999,
+      );
+    }
+
+    // Reservations (overlapping the period)
+    const reservations = await this.db.reservation.findMany({
+      where: {
+        checkInDate: { lte: end },
+        checkOutDate: { gte: start },
+      },
+    });
+    const totalReservations = reservations.length;
+    const cancelledCount = reservations.filter(
+      (r) => r.status === 'CANCELLED',
+    ).length;
+    const checkedInCount = reservations.filter(
+      (r) => r.status === 'CHECKED_IN',
+    ).length;
+    const checkedOutCount = reservations.filter(
+      (r) => r.status === 'CHECKED_OUT',
+    ).length;
+
+    // Room status counts
+    const rooms = await this.db.room.findMany();
+    const totalRooms = rooms.length;
+    const roomStatusCounts = {
+      AVAILABLE: 0,
+      OCCUPIED: 0,
+      MAINTENANCE: 0,
+      RESERVED: 0,
+    };
+    for (const room of rooms) {
+      if (room.status in roomStatusCounts) roomStatusCounts[room.status]++;
+    }
+
+    // Revenue (sum billing records in range)
+    const billings = await this.db.billingRecord.findMany({
+      where: {
+        createdAt: { gte: start, lte: end },
+      },
+    });
+    const revenue = billings.reduce((sum, b) => sum + b.amount, 0);
+
+    return {
+      period: period || 'daily',
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+      totalReservations,
+      cancelledCount,
+      checkedInCount,
+      checkedOutCount,
+      totalRooms,
+      roomStatusCounts,
+      revenue,
+    };
+  }
 }

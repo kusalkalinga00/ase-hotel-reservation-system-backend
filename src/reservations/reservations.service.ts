@@ -160,14 +160,34 @@ export class ReservationsService {
 
   async findAll(query: any) {
     const { status, roomCategoryId, customerId } = query;
-    return this.db.reservation.findMany({
+    const reservations = await this.db.reservation.findMany({
       where: {
         status: status || undefined,
         room: roomCategoryId ? { roomCategoryId } : undefined,
         customerId: customerId || undefined,
       },
-      include: { room: true, customer: true },
+      include: {
+        room: {
+          include: {
+            roomCategory: {
+              select: { price: true },
+            },
+          },
+        },
+        customer: true,
+      },
     });
+    // Map to add roomRate at top level and remove roomCategory object
+    return reservations.map((r) => ({
+      ...r,
+      room: r.room
+        ? {
+            ...r.room,
+            roomRate: r.room.roomCategory?.price,
+            roomCategory: undefined,
+          }
+        : null,
+    }));
   }
 
   async checkInByEmail(createDto: any) {
@@ -467,6 +487,44 @@ export class ReservationsService {
   async cancelTravelCompanyReservation(id: string) {
     const reservation = await this.db.reservation.findUnique({ where: { id } });
     if (!reservation) throw new NotFoundException('Reservation not found');
+    // If group reservation and was confirmed, set all reserved rooms back to AVAILABLE
+    if (
+      reservation.status === 'CONFIRMED' &&
+      reservation.numberOfRooms &&
+      reservation.numberOfRooms > 1
+    ) {
+      // Find the room type/category from the reservation
+      // (Assume you store roomType or roomCategoryId in reservation, or infer from roomId)
+      let roomCategoryId = null;
+      if (reservation.roomId) {
+        const room = await this.db.room.findUnique({
+          where: { id: reservation.roomId },
+        });
+        roomCategoryId = room?.roomCategoryId;
+      }
+      if (roomCategoryId) {
+        // Find all rooms of this category that are RESERVED
+        const reservedRooms = await this.db.room.findMany({
+          where: {
+            roomCategoryId,
+            status: 'RESERVED',
+          },
+          take: reservation.numberOfRooms,
+        });
+        for (const room of reservedRooms) {
+          await this.db.room.update({
+            where: { id: room.id },
+            data: { status: 'AVAILABLE' },
+          });
+        }
+      }
+    } else if (reservation.roomId) {
+      // For single-room reservation, just set that room to AVAILABLE
+      await this.db.room.update({
+        where: { id: reservation.roomId },
+        data: { status: 'AVAILABLE' },
+      });
+    }
     await this.db.reservation.update({
       where: { id },
       data: { status: 'CANCELLED' },
