@@ -18,7 +18,6 @@ export class LoggingMiddleware implements NestMiddleware {
         `${method} ${originalUrl} ${statusCode} - ${contentLength || 0}b sent - User: ${user} - ${duration}ms`,
       );
     });
-
     next();
   }
 }
