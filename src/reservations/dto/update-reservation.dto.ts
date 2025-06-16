@@ -26,6 +26,18 @@ export class UpdateReservationDto {
   creditCard?: string;
 
   @ApiPropertyOptional({
+    example: '12/27',
+    description: 'Updated credit card expiry (optional, MM/YY or MM/YYYY)',
+  })
+  creditCardExpiry?: string;
+
+  @ApiPropertyOptional({
+    example: '123',
+    description: 'Updated credit card CVV (optional)',
+  })
+  creditCardCVV?: string;
+
+  @ApiPropertyOptional({
     example: 'CONFIRMED',
     description: 'Reservation status (PENDING, CONFIRMED, etc.)',
   })

@@ -5,13 +5,10 @@ export class UpdateRoomDto {
   number?: string;
 
   @ApiPropertyOptional({
-    example: 'STANDARD',
-    description: 'Room type (STANDARD, DELUXE, SUITE, RESIDENTIAL_SUITE)',
+    example: 'room-category-uuid',
+    description: 'Room Category ID (UUID)',
   })
-  type?: string;
-
-  @ApiPropertyOptional({ example: 100.0, description: 'Room rate' })
-  rate?: number;
+  roomCategoryId?: string;
 
   @ApiPropertyOptional({
     example: 'AVAILABLE',

@@ -31,13 +31,16 @@ model Reservation {
   id            String   @id @default(uuid())
   customer      User     @relation(fields: [customerId], references: [id])
   customerId    String
-  room          Room     @relation(fields: [roomId], references: [id])
-  roomId        String
+  room          Room?    @relation(fields: [roomId], references: [id])
+  roomId        String?  // Now optional for travel company reservations
   checkInDate   DateTime
   checkOutDate  DateTime
   status        ReservationStatus @default(PENDING)
   occupants     Int
+  numberOfRooms Int? // For travel company group bookings
   creditCard    String? // nullable if not provided
+  creditCardExpiry String? // nullable if not provided
+  creditCardCVV String? // nullable if not provided
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   billingRecord BillingRecord?
@@ -46,9 +49,9 @@ model Reservation {
 model Room {
   id           String   @id @default(uuid())
   number       String   @unique
-  type         RoomType
+  roomCategory RoomCategory @relation(fields: [roomCategoryId], references: [id])
+  roomCategoryId String
   status       RoomStatus @default(AVAILABLE)
-  rate         Float
   reservations Reservation[]
 }
 
@@ -59,6 +62,25 @@ model BillingRecord {
   amount         Float
   paymentMethod  PaymentMethod
   createdAt      DateTime @default(now())
+}
+
+// New Model for Room Categories
+model RoomCategory {
+  id          String  @id @default(uuid())
+  name        String  @unique // e.g., STANDARD, DELUXE, SUITE, RESIDENTIAL_SUITE
+  description String?
+  amenities  String[]
+  image      String? 
+  idealFor    String?
+  capacity    Int?
+  size        String? // e.g., "20sqm",  "300 sq ft"
+  bed         String? // e.g., "King", "Queen", "2 Singles"
+  view        String? // e.g., "City View", "Ocean View"
+  priceTier   String? // e.g., "Budget", "Mid-Range", "Luxury"
+  price       Float   // Base price for this category
+  rooms       Room[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 enum Role {
@@ -75,13 +97,6 @@ enum ReservationStatus {
   CHECKED_IN
   CHECKED_OUT
   NO_SHOW
-}
-
-enum RoomType {
-  STANDARD
-  DELUXE
-  SUITE
-  RESIDENTIAL_SUITE
 }
 
 enum RoomStatus {

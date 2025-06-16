@@ -1,6 +1,7 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { Prisma } from 'generated/prisma';
 import { DatabaseService } from 'src/database/database.service';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class UsersService {
@@ -22,6 +23,23 @@ export class UsersService {
       }
       throw error;
     }
+  }
+
+  async createTravelCompany(data: {
+    email: string;
+    password: string;
+    name: string;
+  }) {
+    // Hash the password before saving
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+    return this.databaseService.user.create({
+      data: {
+        email: data.email,
+        password: hashedPassword,
+        name: data.name,
+        role: 'TRAVEL_COMPANY',
+      },
+    });
   }
 
   async findAll(role?: 'CUSTOMER' | 'CLERK' | 'MANAGER' | 'TRAVEL_COMPANY') {

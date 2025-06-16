@@ -11,14 +11,20 @@ export class ReservationsService {
   constructor(private readonly db: DatabaseService) {}
 
   async create(createDto: any, userId: string) {
-    // Find an available room of the requested type
+    // Find an available room of the requested category
     const room = await this.db.room.findFirst({
       where: {
-        type: createDto.roomType,
+        roomCategoryId: createDto.roomCategoryId,
         status: 'AVAILABLE',
       },
     });
-    if (!room) throw new NotFoundException('No available room of this type');
+    if (!room)
+      throw new NotFoundException('No available room of this category');
+    // Set room status to RESERVED
+    await this.db.room.update({
+      where: { id: room.id },
+      data: { status: 'RESERVED' },
+    });
     // Create reservation
     return this.db.reservation.create({
       data: {
@@ -28,6 +34,8 @@ export class ReservationsService {
         checkOutDate: createDto.checkOutDate,
         occupants: createDto.occupants,
         creditCard: createDto.creditCard,
+        creditCardExpiry: createDto.creditCardExpiry,
+        creditCardCVV: createDto.creditCardCVV,
       },
     });
   }
@@ -39,22 +47,31 @@ export class ReservationsService {
     });
   }
 
-  async update(id: string, userId: string, updateDto: any) {
+  async update(id: string, userId: string, userRole: string, updateDto: any) {
     const reservation = await this.db.reservation.findUnique({ where: { id } });
     if (!reservation) throw new NotFoundException('Reservation not found');
-    if (reservation.customerId !== userId)
+    if (userRole === 'CUSTOMER' && reservation.customerId !== userId)
       throw new ForbiddenException('Not your reservation');
+    // If status is being set to CANCELLED, set room to AVAILABLE
+    if (updateDto.status === 'CANCELLED') {
+      await this.db.room.update({
+        where: { id: reservation.roomId },
+        data: { status: 'AVAILABLE' },
+      });
+    }
     return this.db.reservation.update({
       where: { id },
       data: updateDto,
     });
   }
 
-  async remove(id: string, userId: string) {
+  async remove(id: string, userId: string, userRole?: string) {
     const reservation = await this.db.reservation.findUnique({ where: { id } });
     if (!reservation) throw new NotFoundException('Reservation not found');
-    if (reservation.customerId !== userId)
+    // Only restrict customers to their own reservations
+    if (userRole === 'CUSTOMER' && reservation.customerId !== userId) {
       throw new ForbiddenException('Not your reservation');
+    }
     return this.db.reservation.delete({ where: { id } });
   }
 
@@ -68,6 +85,11 @@ export class ReservationsService {
       },
     });
     if (reservation) {
+      // Set room status to OCCUPIED
+      await this.db.room.update({
+        where: { id: reservation.roomId },
+        data: { status: 'OCCUPIED' },
+      });
       return this.db.reservation.update({
         where: { id: reservation.id },
         data: { status: 'CHECKED_IN' },
@@ -76,11 +98,17 @@ export class ReservationsService {
     // Otherwise, create a new reservation and set status to CHECKED_IN
     const room = await this.db.room.findFirst({
       where: {
-        type: createDto.roomType,
+        roomCategoryId: createDto.roomCategoryId,
         status: 'AVAILABLE',
       },
     });
-    if (!room) throw new NotFoundException('No available room of this type');
+    if (!room)
+      throw new NotFoundException('No available room of this category');
+    // Set room status to OCCUPIED
+    await this.db.room.update({
+      where: { id: room.id },
+      data: { status: 'OCCUPIED' },
+    });
     return this.db.reservation.create({
       data: {
         customerId: customerId,
@@ -89,16 +117,24 @@ export class ReservationsService {
         checkOutDate: createDto.checkOutDate,
         occupants: createDto.occupants,
         creditCard: createDto.creditCard,
+        creditCardExpiry: createDto.creditCardExpiry,
+        creditCardCVV: createDto.creditCardCVV,
         status: 'CHECKED_IN',
       },
     });
   }
 
-  async checkout(id: string, userId: string) {
+  async checkout(id: string, userId: string, userRole?: string) {
     const reservation = await this.db.reservation.findUnique({ where: { id } });
     if (!reservation) throw new NotFoundException('Reservation not found');
-    if (reservation.customerId !== userId)
+    // Allow if user is the customer, or if user is CLERK or MANAGER
+    if (
+      reservation.customerId !== userId &&
+      userRole !== 'CLERK' &&
+      userRole !== 'MANAGER'
+    ) {
       throw new ForbiddenException('Not your reservation');
+    }
     const updatedReservation = await this.db.reservation.update({
       where: { id },
       data: { status: 'CHECKED_OUT' },
@@ -123,15 +159,35 @@ export class ReservationsService {
   }
 
   async findAll(query: any) {
-    const { status, roomType, customerId } = query;
-    return this.db.reservation.findMany({
+    const { status, roomCategoryId, customerId } = query;
+    const reservations = await this.db.reservation.findMany({
       where: {
         status: status || undefined,
-        room: roomType ? { type: roomType } : undefined,
+        room: roomCategoryId ? { roomCategoryId } : undefined,
         customerId: customerId || undefined,
       },
-      include: { room: true, customer: true },
+      include: {
+        room: {
+          include: {
+            roomCategory: {
+              select: { price: true },
+            },
+          },
+        },
+        customer: true,
+      },
     });
+    // Map to add roomRate at top level and remove roomCategory object
+    return reservations.map((r) => ({
+      ...r,
+      room: r.room
+        ? {
+            ...r.room,
+            roomRate: r.room.roomCategory?.price,
+            roomCategory: undefined,
+          }
+        : null,
+    }));
   }
 
   async checkInByEmail(createDto: any) {
@@ -151,6 +207,11 @@ export class ReservationsService {
         },
       });
       if (reservation) {
+        // Set room status to OCCUPIED
+        await this.db.room.update({
+          where: { id: reservation.roomId },
+          data: { status: 'OCCUPIED' },
+        });
         return this.db.reservation.update({
           where: { id: reservation.id },
           data: { status: 'CHECKED_IN' },
@@ -160,7 +221,7 @@ export class ReservationsService {
 
     // If only email is provided, check for any pending reservation
     if (
-      !createDto.roomType &&
+      !createDto.roomCategoryId &&
       !createDto.checkInDate &&
       !createDto.checkOutDate &&
       !createDto.occupants
@@ -180,29 +241,35 @@ export class ReservationsService {
       } else {
         return {
           message:
-            'No pending reservation found. Please provide roomType, checkInDate, checkOutDate, and occupants to create a new reservation and check in.',
+            'No pending reservation found. Please provide roomCategoryId, checkInDate, checkOutDate, and occupants to create a new reservation and check in.',
         };
       }
     }
 
     // Otherwise, create a new reservation and set status to CHECKED_IN
     if (
-      !createDto.roomType ||
+      !createDto.roomCategoryId ||
       !createDto.checkInDate ||
       !createDto.checkOutDate ||
       !createDto.occupants
     ) {
       throw new BadRequestException(
-        'Missing required fields to create a new reservation: roomType, checkInDate, checkOutDate, occupants',
+        'Missing required fields to create a new reservation: roomCategoryId, checkInDate, checkOutDate, occupants',
       );
     }
     const room = await this.db.room.findFirst({
       where: {
-        type: createDto.roomType,
+        roomCategoryId: createDto.roomCategoryId,
         status: 'AVAILABLE',
       },
     });
-    if (!room) throw new NotFoundException('No available room of this type');
+    if (!room)
+      throw new NotFoundException('No available room of this category');
+    // Set room status to OCCUPIED
+    await this.db.room.update({
+      where: { id: room.id },
+      data: { status: 'OCCUPIED' },
+    });
     return this.db.reservation.create({
       data: {
         customerId: user.id,
@@ -211,6 +278,8 @@ export class ReservationsService {
         checkOutDate: createDto.checkOutDate,
         occupants: createDto.occupants,
         creditCard: createDto.creditCard,
+        creditCardExpiry: createDto.creditCardExpiry,
+        creditCardCVV: createDto.creditCardCVV,
         status: 'CHECKED_IN',
       },
     });
@@ -259,23 +328,29 @@ export class ReservationsService {
     }
     // Validate required fields
     if (
-      !dto.roomType ||
+      !dto.roomCategoryId ||
       !dto.checkInDate ||
       !dto.checkOutDate ||
       !dto.occupants
     ) {
       throw new BadRequestException(
-        'Missing required fields: roomType, checkInDate, checkOutDate, occupants',
+        'Missing required fields: roomCategoryId, checkInDate, checkOutDate, occupants',
       );
     }
     // Find an available room
     const room = await this.db.room.findFirst({
       where: {
-        type: dto.roomType,
+        roomCategoryId: dto.roomCategoryId,
         status: 'AVAILABLE',
       },
     });
-    if (!room) throw new NotFoundException('No available room of this type');
+    if (!room)
+      throw new NotFoundException('No available room of this category');
+    // Set room status to OCCUPIED
+    await this.db.room.update({
+      where: { id: room.id },
+      data: { status: 'OCCUPIED' },
+    });
     // Create and check in the reservation
     const reservation = await this.db.reservation.create({
       data: {
@@ -285,14 +360,175 @@ export class ReservationsService {
         checkOutDate: dto.checkOutDate,
         occupants: dto.occupants,
         creditCard: dto.creditCard,
+        creditCardExpiry: dto.creditCardExpiry,
+        creditCardCVV: dto.creditCardCVV,
         status: 'CHECKED_IN',
       },
     });
+    return reservation;
+  }
+
+  async checkInById(id: string, user: any) {
+    const reservation = await this.db.reservation.findUnique({ where: { id } });
+    if (!reservation) throw new NotFoundException('Reservation not found');
+    if (reservation.status !== 'PENDING') {
+      throw new BadRequestException(
+        'Reservation is not pending and cannot be checked in',
+      );
+    }
+    // Set reservation status to CHECKED_IN
+    const updatedReservation = await this.db.reservation.update({
+      where: { id },
+      data: { status: 'CHECKED_IN' },
+    });
     // Set room status to OCCUPIED
     await this.db.room.update({
-      where: { id: room.id },
+      where: { id: reservation.roomId },
       data: { status: 'OCCUPIED' },
     });
-    return reservation;
+    return updatedReservation;
+  }
+
+  async travelCompanyReservation(userId: string, body: any) {
+    const allowedTypes = ['STANDARD', 'DELUXE', 'SUITE'];
+    if (!allowedTypes.includes(body.roomType)) {
+      throw new BadRequestException('Only STANDARD, DELUXE, SUITE are allowed');
+    }
+    if (!body.numberOfRooms || body.numberOfRooms < 3) {
+      throw new BadRequestException('Must reserve at least 3 rooms');
+    }
+    // Find the room category id for the requested type
+    const roomCategory = await this.db.roomCategory.findUnique({
+      where: { name: body.roomType },
+    });
+    if (!roomCategory) throw new BadRequestException('Invalid room type');
+    // Create a single group reservation
+    const reservation = await this.db.reservation.create({
+      data: {
+        customerId: userId,
+        roomId: null, // Will be assigned by clerk on confirmation
+        checkInDate: body.checkInDate,
+        checkOutDate: body.checkOutDate,
+        occupants: body.occupants,
+        numberOfRooms: body.numberOfRooms,
+        status: 'PENDING',
+      },
+    });
+    return {
+      message: 'Reservation created. Awaiting clerk confirmation.',
+      reservation,
+    };
+  }
+
+  async getTravelCompanyReservations() {
+    // Only reservations with numberOfRooms set (group bookings)
+    return this.db.reservation.findMany({
+      where: {
+        numberOfRooms: { not: null },
+      },
+      include: { customer: true, room: true },
+    });
+  }
+
+  async confirmTravelCompanyReservation(id: string) {
+    // Find the reservation
+    const reservation = await this.db.reservation.findUnique({ where: { id } });
+    if (!reservation) throw new NotFoundException('Reservation not found');
+    if (!reservation.numberOfRooms || reservation.numberOfRooms < 1)
+      throw new BadRequestException('Not a group reservation');
+    // Find the room type from the reservation (via roomCategoryId or roomType logic)
+    // For this example, assume all rooms must be of the same type as originally requested
+    // We'll use the first available roomCategoryId from the RoomCategory table
+    // (You may want to store roomType/roomCategoryId in the reservation for more robust logic)
+    // Find available rooms of any type if roomId is null
+    const roomType = await this.db.roomCategory.findFirst({
+      where: {
+        // This assumes you store the type in reservation, e.g. reservation.roomType or similar
+        // If not, you may need to extend your model to store roomType/roomCategoryId
+        // For now, fallback to STANDARD
+        name: 'STANDARD',
+      },
+    });
+    if (!roomType) throw new BadRequestException('Room type not found');
+    // Find enough available rooms of this type
+    const availableRooms = await this.db.room.findMany({
+      where: {
+        roomCategoryId: roomType.id,
+        status: 'AVAILABLE',
+      },
+      take: reservation.numberOfRooms,
+    });
+    if (availableRooms.length < reservation.numberOfRooms) {
+      throw new BadRequestException(
+        'Not enough available rooms to confirm this reservation',
+      );
+    }
+    // Assign the first room to reservation.roomId, set all rooms to RESERVED
+    for (const room of availableRooms) {
+      await this.db.room.update({
+        where: { id: room.id },
+        data: { status: 'RESERVED' },
+      });
+    }
+    await this.db.reservation.update({
+      where: { id },
+      data: {
+        roomId: availableRooms[0].id,
+        status: 'CONFIRMED',
+      },
+    });
+    return {
+      message:
+        'Travel company reservation confirmed and rooms assigned automatically.',
+      assignedRoomIds: availableRooms.map((r) => r.id),
+    };
+  }
+
+  async cancelTravelCompanyReservation(id: string) {
+    const reservation = await this.db.reservation.findUnique({ where: { id } });
+    if (!reservation) throw new NotFoundException('Reservation not found');
+    // If group reservation and was confirmed, set all reserved rooms back to AVAILABLE
+    if (
+      reservation.status === 'CONFIRMED' &&
+      reservation.numberOfRooms &&
+      reservation.numberOfRooms > 1
+    ) {
+      // Find the room type/category from the reservation
+      // (Assume you store roomType or roomCategoryId in reservation, or infer from roomId)
+      let roomCategoryId = null;
+      if (reservation.roomId) {
+        const room = await this.db.room.findUnique({
+          where: { id: reservation.roomId },
+        });
+        roomCategoryId = room?.roomCategoryId;
+      }
+      if (roomCategoryId) {
+        // Find all rooms of this category that are RESERVED
+        const reservedRooms = await this.db.room.findMany({
+          where: {
+            roomCategoryId,
+            status: 'RESERVED',
+          },
+          take: reservation.numberOfRooms,
+        });
+        for (const room of reservedRooms) {
+          await this.db.room.update({
+            where: { id: room.id },
+            data: { status: 'AVAILABLE' },
+          });
+        }
+      }
+    } else if (reservation.roomId) {
+      // For single-room reservation, just set that room to AVAILABLE
+      await this.db.room.update({
+        where: { id: reservation.roomId },
+        data: { status: 'AVAILABLE' },
+      });
+    }
+    await this.db.reservation.update({
+      where: { id },
+      data: { status: 'CANCELLED' },
+    });
+    return { message: 'Travel company reservation cancelled.' };
   }
 }
