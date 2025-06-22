@@ -80,10 +80,19 @@ export class ReservationsService {
     // Send confirmation email
     const user = await this.db.user.findUnique({ where: { id: userId } });
     if (user?.email) {
+      // Format dates to human readable
+      const checkIn = new Date(createDto.checkInDate).toLocaleString('en-US', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+      });
+      const checkOut = new Date(createDto.checkOutDate).toLocaleString(
+        'en-US',
+        { dateStyle: 'long', timeStyle: 'short' },
+      );
       await this.mailService.sendMail(
         user.email,
         'Reservation Confirmed',
-        `Your reservation from ${createDto.checkInDate} to ${createDto.checkOutDate} is confirmed.`,
+        `Your reservation from ${checkIn} to ${checkOut} is confirmed.`,
       );
     }
     return reservation;
@@ -125,7 +134,6 @@ export class ReservationsService {
   }
 
   async checkIn(createDto: any, customerId: string) {
-    // If reservation exists for customer and room and is PENDING, set status to CHECKED_IN
     const reservation = await this.db.reservation.findFirst({
       where: {
         customerId: customerId,
@@ -144,7 +152,7 @@ export class ReservationsService {
         await this.mailService.sendMail(
           user.email,
           'Check-In Successful',
-          `You have successfully checked in on ${new Date().toLocaleDateString()}.`,
+          `You have successfully checked in on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
         );
       }
       return this.db.reservation.update({
@@ -152,7 +160,7 @@ export class ReservationsService {
         data: { status: 'CHECKED_IN', checkInDate: new Date() },
       });
     }
-    // Otherwise, create a new reservation and set status to CHECKED_IN
+
     const room = await this.db.room.findFirst({
       where: {
         roomCategoryId: createDto.roomCategoryId,
@@ -161,7 +169,7 @@ export class ReservationsService {
     });
     if (!room)
       throw new ConflictException('No available room of this category');
-    // Set room status to OCCUPIED
+
     await this.db.room.update({
       where: { id: room.id },
       data: { status: 'OCCUPIED' },
@@ -184,7 +192,7 @@ export class ReservationsService {
       await this.mailService.sendMail(
         user.email,
         'Check-In Successful',
-        `You have successfully checked in on ${new Date().toLocaleDateString()}.`,
+        `You have successfully checked in on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
       );
     }
     return newReservation;
@@ -218,7 +226,7 @@ export class ReservationsService {
       await this.mailService.sendMail(
         user.email,
         'Check-Out Successful',
-        `You have successfully checked out on ${new Date().toLocaleDateString()}.`,
+        `You have successfully checked out on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
       );
     }
     return updatedReservation;
@@ -288,6 +296,11 @@ export class ReservationsService {
           where: { id: reservation.roomId },
           data: { status: 'OCCUPIED' },
         });
+        await this.mailService.sendMail(
+          user.email,
+          'Check-In Successful',
+          `You have successfully checked in on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
+        );
         return this.db.reservation.update({
           where: { id: reservation.id },
           data: { status: 'CHECKED_IN', checkInDate: new Date() },
@@ -382,6 +395,11 @@ export class ReservationsService {
         where: { id: updatedReservation.roomId },
         data: { status: 'OCCUPIED' },
       });
+      await this.mailService.sendMail(
+        user.email,
+        'Check-In Successful',
+        `You have successfully checked in on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
+      );
       return updatedReservation;
     } else {
       return { message: 'No pending reservation found for this customer.' };
@@ -480,6 +498,17 @@ export class ReservationsService {
       where: { id: reservation.roomId },
       data: { status: 'OCCUPIED' },
     });
+    // Send check-in email
+    const dbUser = await this.db.user.findUnique({
+      where: { id: reservation.customerId },
+    });
+    if (dbUser?.email) {
+      await this.mailService.sendMail(
+        dbUser.email,
+        'Check-In Successful',
+        `You have successfully checked in on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
+      );
+    }
     return updatedReservation;
   }
 
@@ -530,16 +559,8 @@ export class ReservationsService {
     if (!reservation) throw new NotFoundException('Reservation not found');
     if (!reservation.numberOfRooms || reservation.numberOfRooms < 1)
       throw new BadRequestException('Not a group reservation');
-    // Find the room type from the reservation (via roomCategoryId or roomType logic)
-    // For this example, assume all rooms must be of the same type as originally requested
-    // We'll use the first available roomCategoryId from the RoomCategory table
-    // (You may want to store roomType/roomCategoryId in the reservation for more robust logic)
-    // Find available rooms of any type if roomId is null
     const roomType = await this.db.roomCategory.findFirst({
       where: {
-        // This assumes you store the type in reservation, e.g. reservation.roomType or similar
-        // If not, you may need to extend your model to store roomType/roomCategoryId
-        // For now, fallback to STANDARD
         name: 'STANDARD',
       },
     });
@@ -557,7 +578,6 @@ export class ReservationsService {
         'Not enough available rooms to confirm this reservation',
       );
     }
-    // Assign the first room to reservation.roomId, set all rooms to RESERVED
     for (const room of availableRooms) {
       await this.db.room.update({
         where: { id: room.id },
@@ -581,14 +601,12 @@ export class ReservationsService {
   async cancelTravelCompanyReservation(id: string) {
     const reservation = await this.db.reservation.findUnique({ where: { id } });
     if (!reservation) throw new NotFoundException('Reservation not found');
-    // If group reservation and was confirmed, set all reserved rooms back to AVAILABLE
+
     if (
       reservation.status === 'CONFIRMED' &&
       reservation.numberOfRooms &&
       reservation.numberOfRooms > 1
     ) {
-      // Find the room type/category from the reservation
-      // (Assume you store roomType or roomCategoryId in reservation, or infer from roomId)
       let roomCategoryId = null;
       if (reservation.roomId) {
         const room = await this.db.room.findUnique({
