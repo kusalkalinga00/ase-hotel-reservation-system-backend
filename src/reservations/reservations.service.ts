@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 
@@ -11,20 +12,72 @@ export class ReservationsService {
   constructor(private readonly db: DatabaseService) {}
 
   async create(createDto: any, userId: string) {
-    // Find an available room of the requested category
+    // Map roomType to roomCategoryId if only roomType is provided
+    let roomCategoryId = createDto.roomCategoryId;
+    if (!roomCategoryId && createDto.roomType) {
+      const category = await this.db.roomCategory.findUnique({
+        where: { name: createDto.roomType },
+      });
+      if (!category) {
+        throw new BadRequestException('Invalid room type');
+      }
+      roomCategoryId = category.id;
+      // Debug: log found category
+      console.log('Found room category:', category);
+    }
+    if (!roomCategoryId) {
+      throw new BadRequestException('Room category is required');
+    }
+    // Debug: log all rooms in this category
+    const allRooms = await this.db.room.findMany({ where: { roomCategoryId } });
+    console.log(
+      'Rooms in category:',
+      allRooms.length,
+      allRooms.map((r) => r.id),
+    );
+    // Log status and reservations for each room
+    for (const r of allRooms) {
+      const reservations = await this.db.reservation.findMany({
+        where: {
+          roomId: r.id,
+          status: { in: ['PENDING', 'CONFIRMED', 'CHECKED_IN'] },
+          checkInDate: { lte: createDto.checkOutDate },
+          checkOutDate: { gte: createDto.checkInDate },
+        },
+      });
+      console.log(
+        `Room ${r.id} status: ${r.status}, overlapping reservations:`,
+        reservations,
+      );
+    }
+    // Find an available room of the requested category that is not reserved/occupied for overlapping dates
     const room = await this.db.room.findFirst({
       where: {
-        roomCategoryId: createDto.roomCategoryId,
-        status: 'AVAILABLE',
+        roomCategoryId: roomCategoryId,
+        reservations: {
+          none: {
+            OR: [
+              {
+                checkInDate: { lte: createDto.checkOutDate },
+                checkOutDate: { gte: createDto.checkInDate },
+                status: { in: ['PENDING', 'CONFIRMED', 'CHECKED_IN'] },
+              },
+            ],
+          },
+        },
+        // status filter removed to allow booking for future dates
       },
     });
+    console.log('Selected room:', room);
     if (!room)
-      throw new NotFoundException('No available room of this category');
-    // Set room status to RESERVED
-    await this.db.room.update({
-      where: { id: room.id },
-      data: { status: 'RESERVED' },
-    });
+      throw new ConflictException(
+        'No available room of this category for the selected dates',
+      );
+    // Optionally, set room status to RESERVED if you want to mark it
+    // await this.db.room.update({
+    //   where: { id: room.id },
+    //   data: { status: 'RESERVED' },
+    // });
     // Create reservation
     return this.db.reservation.create({
       data: {
@@ -103,7 +156,7 @@ export class ReservationsService {
       },
     });
     if (!room)
-      throw new NotFoundException('No available room of this category');
+      throw new ConflictException('No available room of this category');
     // Set room status to OCCUPIED
     await this.db.room.update({
       where: { id: room.id },
@@ -264,7 +317,7 @@ export class ReservationsService {
       },
     });
     if (!room)
-      throw new NotFoundException('No available room of this category');
+      throw new ConflictException('No available room of this category');
     // Set room status to OCCUPIED
     await this.db.room.update({
       where: { id: room.id },
@@ -345,7 +398,7 @@ export class ReservationsService {
       },
     });
     if (!room)
-      throw new NotFoundException('No available room of this category');
+      throw new ConflictException('No available room of this category');
     // Set room status to OCCUPIED
     await this.db.room.update({
       where: { id: room.id },
