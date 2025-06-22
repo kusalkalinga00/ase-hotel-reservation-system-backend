@@ -92,7 +92,7 @@ export class ReservationsService {
       });
       return this.db.reservation.update({
         where: { id: reservation.id },
-        data: { status: 'CHECKED_IN' },
+        data: { status: 'CHECKED_IN', checkInDate: new Date() },
       });
     }
     // Otherwise, create a new reservation and set status to CHECKED_IN
@@ -113,7 +113,7 @@ export class ReservationsService {
       data: {
         customerId: customerId,
         roomId: room.id,
-        checkInDate: createDto.checkInDate,
+        checkInDate: new Date(),
         checkOutDate: createDto.checkOutDate,
         occupants: createDto.occupants,
         creditCard: createDto.creditCard,
@@ -214,7 +214,7 @@ export class ReservationsService {
         });
         return this.db.reservation.update({
           where: { id: reservation.id },
-          data: { status: 'CHECKED_IN' },
+          data: { status: 'CHECKED_IN', checkInDate: new Date() },
         });
       }
     }
@@ -274,7 +274,7 @@ export class ReservationsService {
       data: {
         customerId: user.id,
         roomId: room.id,
-        checkInDate: createDto.checkInDate,
+        checkInDate: new Date(),
         checkOutDate: createDto.checkOutDate,
         occupants: createDto.occupants,
         creditCard: createDto.creditCard,
@@ -300,7 +300,7 @@ export class ReservationsService {
       // Check in the reservation
       const updatedReservation = await this.db.reservation.update({
         where: { id: pendingReservation.id },
-        data: { status: 'CHECKED_IN' },
+        data: { status: 'CHECKED_IN', checkInDate: new Date() },
       });
       // Set room status to OCCUPIED
       await this.db.room.update({
@@ -356,7 +356,7 @@ export class ReservationsService {
       data: {
         customerId: user.id,
         roomId: room.id,
-        checkInDate: dto.checkInDate,
+        checkInDate: new Date(),
         checkOutDate: dto.checkOutDate,
         occupants: dto.occupants,
         creditCard: dto.creditCard,
@@ -373,13 +373,13 @@ export class ReservationsService {
     if (!reservation) throw new NotFoundException('Reservation not found');
     if (reservation.status !== 'PENDING') {
       throw new BadRequestException(
-        'Reservation is not pending and cannot be checked in',
+        'Reservation is already checked in or cancelled',
       );
     }
     // Set reservation status to CHECKED_IN
     const updatedReservation = await this.db.reservation.update({
       where: { id },
-      data: { status: 'CHECKED_IN' },
+      data: { status: 'CHECKED_IN', checkInDate: new Date() },
     });
     // Set room status to OCCUPIED
     await this.db.room.update({
