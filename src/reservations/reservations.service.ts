@@ -6,10 +6,14 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { MailService } from '../common/mail.service';
 
 @Injectable()
 export class ReservationsService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly mailService: MailService,
+  ) {}
 
   async create(createDto: any, userId: string) {
     let roomCategoryId = createDto.roomCategoryId;
@@ -61,7 +65,7 @@ export class ReservationsService {
         'No available room of this category for the selected dates',
       );
 
-    return this.db.reservation.create({
+    const reservation = await this.db.reservation.create({
       data: {
         customerId: userId,
         roomId: room.id,
@@ -73,6 +77,16 @@ export class ReservationsService {
         creditCardCVV: createDto.creditCardCVV,
       },
     });
+    // Send confirmation email
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (user?.email) {
+      await this.mailService.sendMail(
+        user.email,
+        'Reservation Confirmed',
+        `Your reservation from ${createDto.checkInDate} to ${createDto.checkOutDate} is confirmed.`,
+      );
+    }
+    return reservation;
   }
 
   async findMyReservations(userId: string) {
@@ -125,6 +139,14 @@ export class ReservationsService {
         where: { id: reservation.roomId },
         data: { status: 'OCCUPIED' },
       });
+      const user = await this.db.user.findUnique({ where: { id: customerId } });
+      if (user?.email) {
+        await this.mailService.sendMail(
+          user.email,
+          'Check-In Successful',
+          `You have successfully checked in on ${new Date().toLocaleDateString()}.`,
+        );
+      }
       return this.db.reservation.update({
         where: { id: reservation.id },
         data: { status: 'CHECKED_IN', checkInDate: new Date() },
@@ -144,7 +166,7 @@ export class ReservationsService {
       where: { id: room.id },
       data: { status: 'OCCUPIED' },
     });
-    return this.db.reservation.create({
+    const newReservation = await this.db.reservation.create({
       data: {
         customerId: customerId,
         roomId: room.id,
@@ -157,6 +179,15 @@ export class ReservationsService {
         status: 'CHECKED_IN',
       },
     });
+    const user = await this.db.user.findUnique({ where: { id: customerId } });
+    if (user?.email) {
+      await this.mailService.sendMail(
+        user.email,
+        'Check-In Successful',
+        `You have successfully checked in on ${new Date().toLocaleDateString()}.`,
+      );
+    }
+    return newReservation;
   }
 
   async checkout(id: string, userId: string, userRole?: string) {
@@ -179,6 +210,17 @@ export class ReservationsService {
       where: { id: reservation.roomId },
       data: { status: 'AVAILABLE' },
     });
+    // Send checkout email
+    const user = await this.db.user.findUnique({
+      where: { id: reservation.customerId },
+    });
+    if (user?.email) {
+      await this.mailService.sendMail(
+        user.email,
+        'Check-Out Successful',
+        `You have successfully checked out on ${new Date().toLocaleDateString()}.`,
+      );
+    }
     return updatedReservation;
   }
 
