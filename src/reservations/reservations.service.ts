@@ -12,7 +12,6 @@ export class ReservationsService {
   constructor(private readonly db: DatabaseService) {}
 
   async create(createDto: any, userId: string) {
-    // Map roomType to roomCategoryId if only roomType is provided
     let roomCategoryId = createDto.roomCategoryId;
     if (!roomCategoryId && createDto.roomType) {
       const category = await this.db.roomCategory.findUnique({
@@ -22,20 +21,13 @@ export class ReservationsService {
         throw new BadRequestException('Invalid room type');
       }
       roomCategoryId = category.id;
-      // Debug: log found category
-      console.log('Found room category:', category);
     }
     if (!roomCategoryId) {
       throw new BadRequestException('Room category is required');
     }
-    // Debug: log all rooms in this category
+
     const allRooms = await this.db.room.findMany({ where: { roomCategoryId } });
-    console.log(
-      'Rooms in category:',
-      allRooms.length,
-      allRooms.map((r) => r.id),
-    );
-    // Log status and reservations for each room
+
     for (const r of allRooms) {
       const reservations = await this.db.reservation.findMany({
         where: {
@@ -45,12 +37,8 @@ export class ReservationsService {
           checkOutDate: { gte: createDto.checkInDate },
         },
       });
-      console.log(
-        `Room ${r.id} status: ${r.status}, overlapping reservations:`,
-        reservations,
-      );
     }
-    // Find an available room of the requested category that is not reserved/occupied for overlapping dates
+
     const room = await this.db.room.findFirst({
       where: {
         roomCategoryId: roomCategoryId,
@@ -65,20 +53,14 @@ export class ReservationsService {
             ],
           },
         },
-        // status filter removed to allow booking for future dates
       },
     });
-    console.log('Selected room:', room);
+
     if (!room)
       throw new ConflictException(
         'No available room of this category for the selected dates',
       );
-    // Optionally, set room status to RESERVED if you want to mark it
-    // await this.db.room.update({
-    //   where: { id: room.id },
-    //   data: { status: 'RESERVED' },
-    // });
-    // Create reservation
+
     return this.db.reservation.create({
       data: {
         customerId: userId,
@@ -244,7 +226,6 @@ export class ReservationsService {
   }
 
   async checkInByEmail(createDto: any) {
-    // Find the user by email
     const user = await this.db.user.findUnique({
       where: { email: createDto.email },
     });
@@ -339,7 +320,6 @@ export class ReservationsService {
   }
 
   async checkInWithEmail(email: string) {
-    // Find the user by email
     const user = await this.db.user.findUnique({ where: { email } });
     if (!user) throw new NotFoundException('Customer not found');
     // Find a pending reservation for this user
@@ -367,44 +347,63 @@ export class ReservationsService {
   }
 
   async manualCheckIn(dto: any) {
-    // Find or create the user by email
     let user = await this.db.user.findUnique({ where: { email: dto.email } });
+
     if (!user) {
       user = await this.db.user.create({
         data: {
           email: dto.email,
-          password: '', // No password for front-desk created users
+          password: '',
           role: 'CUSTOMER',
           name: dto.name || dto.email.split('@')[0],
         },
       });
     }
-    // Validate required fields
-    if (
-      !dto.roomCategoryId ||
-      !dto.checkInDate ||
-      !dto.checkOutDate ||
-      !dto.occupants
-    ) {
+
+    let roomCategoryId = dto.roomCategoryId;
+    if (!roomCategoryId && dto.roomType) {
+      const category = await this.db.roomCategory.findUnique({
+        where: { name: dto.roomType },
+      });
+      if (!category) {
+        throw new BadRequestException('Invalid room type');
+      }
+      roomCategoryId = category.id;
+    }
+
+    if (!roomCategoryId || dto.checkOutDate == null || dto.occupants == null) {
       throw new BadRequestException(
-        'Missing required fields: roomCategoryId, checkInDate, checkOutDate, occupants',
+        'Missing required fields: roomCategoryId, checkOutDate, occupants',
       );
     }
-    // Find an available room
+
     const room = await this.db.room.findFirst({
       where: {
-        roomCategoryId: dto.roomCategoryId,
-        status: 'AVAILABLE',
+        roomCategoryId: roomCategoryId,
+        reservations: {
+          none: {
+            OR: [
+              {
+                checkInDate: { lte: dto.checkOutDate },
+                checkOutDate: { gte: new Date() },
+                status: { in: ['PENDING', 'CONFIRMED', 'CHECKED_IN'] },
+              },
+            ],
+          },
+        },
       },
     });
+
     if (!room)
-      throw new ConflictException('No available room of this category');
-    // Set room status to OCCUPIED
+      throw new ConflictException(
+        'No available room of this category for the selected dates',
+      );
+
     await this.db.room.update({
       where: { id: room.id },
       data: { status: 'OCCUPIED' },
     });
-    // Create and check in the reservation
+
     const reservation = await this.db.reservation.create({
       data: {
         customerId: user.id,
