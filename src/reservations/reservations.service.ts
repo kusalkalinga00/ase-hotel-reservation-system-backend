@@ -7,12 +7,14 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { MailService } from '../common/mail.service';
+import { BillingService } from '../billing/billing.service';
 
 @Injectable()
 export class ReservationsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly mailService: MailService,
+    private readonly billingService: BillingService,
   ) {}
 
   async create(createDto: any, userId: string) {
@@ -130,6 +132,13 @@ export class ReservationsService {
     if (userRole === 'CUSTOMER' && reservation.customerId !== userId) {
       throw new ForbiddenException('Not your reservation');
     }
+    // Only allow delete if status is CHECKED_OUT
+    if (reservation.status !== 'CHECKED_OUT') {
+      throw new BadRequestException(
+        'Reservation can only be deleted after CHECKED_OUT',
+      );
+    }
+    // Hard delete: actually remove from DB
     return this.db.reservation.delete({ where: { id } });
   }
 
@@ -228,6 +237,17 @@ export class ReservationsService {
         'Check-Out Successful',
         `You have successfully checked out on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
       );
+      // Send billing summary
+      const billing = await this.db.billingRecord.findUnique({
+        where: { reservationId: id },
+      });
+      if (billing) {
+        await this.mailService.sendMail(
+          user.email,
+          'Your Billing Summary',
+          `Thank you for staying with us.\n\nReservation ID: ${id}\nAmount: $${billing.amount}\nPayment Method: ${billing.paymentMethod}\nDate: ${billing.createdAt.toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}`,
+        );
+      }
     }
     return updatedReservation;
   }
