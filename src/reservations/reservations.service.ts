@@ -3,30 +3,71 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { MailService } from '../common/mail.service';
+import { BillingService } from '../billing/billing.service';
 
 @Injectable()
 export class ReservationsService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly mailService: MailService,
+    private readonly billingService: BillingService,
+  ) {}
 
   async create(createDto: any, userId: string) {
-    // Find an available room of the requested category
+    let roomCategoryId = createDto.roomCategoryId;
+    if (!roomCategoryId && createDto.roomType) {
+      const category = await this.db.roomCategory.findUnique({
+        where: { name: createDto.roomType },
+      });
+      if (!category) {
+        throw new BadRequestException('Invalid room type');
+      }
+      roomCategoryId = category.id;
+    }
+    if (!roomCategoryId) {
+      throw new BadRequestException('Room category is required');
+    }
+
+    const allRooms = await this.db.room.findMany({ where: { roomCategoryId } });
+
+    for (const r of allRooms) {
+      const reservations = await this.db.reservation.findMany({
+        where: {
+          roomId: r.id,
+          status: { in: ['PENDING', 'CONFIRMED', 'CHECKED_IN'] },
+          checkInDate: { lte: createDto.checkOutDate },
+          checkOutDate: { gte: createDto.checkInDate },
+        },
+      });
+    }
+
     const room = await this.db.room.findFirst({
       where: {
-        roomCategoryId: createDto.roomCategoryId,
-        status: 'AVAILABLE',
+        roomCategoryId: roomCategoryId,
+        reservations: {
+          none: {
+            OR: [
+              {
+                checkInDate: { lte: createDto.checkOutDate },
+                checkOutDate: { gte: createDto.checkInDate },
+                status: { in: ['PENDING', 'CONFIRMED', 'CHECKED_IN'] },
+              },
+            ],
+          },
+        },
       },
     });
+
     if (!room)
-      throw new NotFoundException('No available room of this category');
-    // Set room status to RESERVED
-    await this.db.room.update({
-      where: { id: room.id },
-      data: { status: 'RESERVED' },
-    });
-    // Create reservation
-    return this.db.reservation.create({
+      throw new ConflictException(
+        'No available room of this category for the selected dates',
+      );
+
+    const reservation = await this.db.reservation.create({
       data: {
         customerId: userId,
         roomId: room.id,
@@ -38,6 +79,25 @@ export class ReservationsService {
         creditCardCVV: createDto.creditCardCVV,
       },
     });
+    // Send confirmation email
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (user?.email) {
+      // Format dates to human readable
+      const checkIn = new Date(createDto.checkInDate).toLocaleString('en-US', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+      });
+      const checkOut = new Date(createDto.checkOutDate).toLocaleString(
+        'en-US',
+        { dateStyle: 'long', timeStyle: 'short' },
+      );
+      await this.mailService.sendMail(
+        user.email,
+        'Reservation Confirmed',
+        `Your reservation from ${checkIn} to ${checkOut} is confirmed.`,
+      );
+    }
+    return reservation;
   }
 
   async findMyReservations(userId: string) {
@@ -72,11 +132,17 @@ export class ReservationsService {
     if (userRole === 'CUSTOMER' && reservation.customerId !== userId) {
       throw new ForbiddenException('Not your reservation');
     }
+    // Only allow delete if status is CHECKED_OUT
+    if (reservation.status !== 'CHECKED_OUT') {
+      throw new BadRequestException(
+        'Reservation can only be deleted after CHECKED_OUT',
+      );
+    }
+    // Hard delete: actually remove from DB
     return this.db.reservation.delete({ where: { id } });
   }
 
   async checkIn(createDto: any, customerId: string) {
-    // If reservation exists for customer and room and is PENDING, set status to CHECKED_IN
     const reservation = await this.db.reservation.findFirst({
       where: {
         customerId: customerId,
@@ -90,12 +156,20 @@ export class ReservationsService {
         where: { id: reservation.roomId },
         data: { status: 'OCCUPIED' },
       });
+      const user = await this.db.user.findUnique({ where: { id: customerId } });
+      if (user?.email) {
+        await this.mailService.sendMail(
+          user.email,
+          'Check-In Successful',
+          `You have successfully checked in on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
+        );
+      }
       return this.db.reservation.update({
         where: { id: reservation.id },
-        data: { status: 'CHECKED_IN' },
+        data: { status: 'CHECKED_IN', checkInDate: new Date() },
       });
     }
-    // Otherwise, create a new reservation and set status to CHECKED_IN
+
     const room = await this.db.room.findFirst({
       where: {
         roomCategoryId: createDto.roomCategoryId,
@@ -103,17 +177,17 @@ export class ReservationsService {
       },
     });
     if (!room)
-      throw new NotFoundException('No available room of this category');
-    // Set room status to OCCUPIED
+      throw new ConflictException('No available room of this category');
+
     await this.db.room.update({
       where: { id: room.id },
       data: { status: 'OCCUPIED' },
     });
-    return this.db.reservation.create({
+    const newReservation = await this.db.reservation.create({
       data: {
         customerId: customerId,
         roomId: room.id,
-        checkInDate: createDto.checkInDate,
+        checkInDate: new Date(),
         checkOutDate: createDto.checkOutDate,
         occupants: createDto.occupants,
         creditCard: createDto.creditCard,
@@ -122,6 +196,15 @@ export class ReservationsService {
         status: 'CHECKED_IN',
       },
     });
+    const user = await this.db.user.findUnique({ where: { id: customerId } });
+    if (user?.email) {
+      await this.mailService.sendMail(
+        user.email,
+        'Check-In Successful',
+        `You have successfully checked in on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
+      );
+    }
+    return newReservation;
   }
 
   async checkout(id: string, userId: string, userRole?: string) {
@@ -144,6 +227,28 @@ export class ReservationsService {
       where: { id: reservation.roomId },
       data: { status: 'AVAILABLE' },
     });
+    // Send checkout email
+    const user = await this.db.user.findUnique({
+      where: { id: reservation.customerId },
+    });
+    if (user?.email) {
+      await this.mailService.sendMail(
+        user.email,
+        'Check-Out Successful',
+        `You have successfully checked out on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
+      );
+      // Send billing summary
+      const billing = await this.db.billingRecord.findUnique({
+        where: { reservationId: id },
+      });
+      if (billing) {
+        await this.mailService.sendMail(
+          user.email,
+          'Your Billing Summary',
+          `Thank you for staying with us.\n\nReservation ID: ${id}\nAmount: $${billing.amount}\nPayment Method: ${billing.paymentMethod}\nDate: ${billing.createdAt.toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}`,
+        );
+      }
+    }
     return updatedReservation;
   }
 
@@ -191,7 +296,6 @@ export class ReservationsService {
   }
 
   async checkInByEmail(createDto: any) {
-    // Find the user by email
     const user = await this.db.user.findUnique({
       where: { email: createDto.email },
     });
@@ -212,9 +316,14 @@ export class ReservationsService {
           where: { id: reservation.roomId },
           data: { status: 'OCCUPIED' },
         });
+        await this.mailService.sendMail(
+          user.email,
+          'Check-In Successful',
+          `You have successfully checked in on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
+        );
         return this.db.reservation.update({
           where: { id: reservation.id },
-          data: { status: 'CHECKED_IN' },
+          data: { status: 'CHECKED_IN', checkInDate: new Date() },
         });
       }
     }
@@ -264,7 +373,7 @@ export class ReservationsService {
       },
     });
     if (!room)
-      throw new NotFoundException('No available room of this category');
+      throw new ConflictException('No available room of this category');
     // Set room status to OCCUPIED
     await this.db.room.update({
       where: { id: room.id },
@@ -274,7 +383,7 @@ export class ReservationsService {
       data: {
         customerId: user.id,
         roomId: room.id,
-        checkInDate: createDto.checkInDate,
+        checkInDate: new Date(),
         checkOutDate: createDto.checkOutDate,
         occupants: createDto.occupants,
         creditCard: createDto.creditCard,
@@ -286,7 +395,6 @@ export class ReservationsService {
   }
 
   async checkInWithEmail(email: string) {
-    // Find the user by email
     const user = await this.db.user.findUnique({ where: { email } });
     if (!user) throw new NotFoundException('Customer not found');
     // Find a pending reservation for this user
@@ -300,13 +408,18 @@ export class ReservationsService {
       // Check in the reservation
       const updatedReservation = await this.db.reservation.update({
         where: { id: pendingReservation.id },
-        data: { status: 'CHECKED_IN' },
+        data: { status: 'CHECKED_IN', checkInDate: new Date() },
       });
       // Set room status to OCCUPIED
       await this.db.room.update({
         where: { id: updatedReservation.roomId },
         data: { status: 'OCCUPIED' },
       });
+      await this.mailService.sendMail(
+        user.email,
+        'Check-In Successful',
+        `You have successfully checked in on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
+      );
       return updatedReservation;
     } else {
       return { message: 'No pending reservation found for this customer.' };
@@ -314,49 +427,68 @@ export class ReservationsService {
   }
 
   async manualCheckIn(dto: any) {
-    // Find or create the user by email
     let user = await this.db.user.findUnique({ where: { email: dto.email } });
+
     if (!user) {
       user = await this.db.user.create({
         data: {
           email: dto.email,
-          password: '', // No password for front-desk created users
+          password: '',
           role: 'CUSTOMER',
           name: dto.name || dto.email.split('@')[0],
         },
       });
     }
-    // Validate required fields
-    if (
-      !dto.roomCategoryId ||
-      !dto.checkInDate ||
-      !dto.checkOutDate ||
-      !dto.occupants
-    ) {
+
+    let roomCategoryId = dto.roomCategoryId;
+    if (!roomCategoryId && dto.roomType) {
+      const category = await this.db.roomCategory.findUnique({
+        where: { name: dto.roomType },
+      });
+      if (!category) {
+        throw new BadRequestException('Invalid room type');
+      }
+      roomCategoryId = category.id;
+    }
+
+    if (!roomCategoryId || dto.checkOutDate == null || dto.occupants == null) {
       throw new BadRequestException(
-        'Missing required fields: roomCategoryId, checkInDate, checkOutDate, occupants',
+        'Missing required fields: roomCategoryId, checkOutDate, occupants',
       );
     }
-    // Find an available room
+
     const room = await this.db.room.findFirst({
       where: {
-        roomCategoryId: dto.roomCategoryId,
-        status: 'AVAILABLE',
+        roomCategoryId: roomCategoryId,
+        reservations: {
+          none: {
+            OR: [
+              {
+                checkInDate: { lte: dto.checkOutDate },
+                checkOutDate: { gte: new Date() },
+                status: { in: ['PENDING', 'CONFIRMED', 'CHECKED_IN'] },
+              },
+            ],
+          },
+        },
       },
     });
+
     if (!room)
-      throw new NotFoundException('No available room of this category');
-    // Set room status to OCCUPIED
+      throw new ConflictException(
+        'No available room of this category for the selected dates',
+      );
+
     await this.db.room.update({
       where: { id: room.id },
       data: { status: 'OCCUPIED' },
     });
-    // Create and check in the reservation
+
     const reservation = await this.db.reservation.create({
       data: {
         customerId: user.id,
         roomId: room.id,
-        checkInDate: dto.checkInDate,
+        checkInDate: new Date(),
         checkOutDate: dto.checkOutDate,
         occupants: dto.occupants,
         creditCard: dto.creditCard,
@@ -373,19 +505,30 @@ export class ReservationsService {
     if (!reservation) throw new NotFoundException('Reservation not found');
     if (reservation.status !== 'PENDING') {
       throw new BadRequestException(
-        'Reservation is not pending and cannot be checked in',
+        'Reservation is already checked in or cancelled',
       );
     }
     // Set reservation status to CHECKED_IN
     const updatedReservation = await this.db.reservation.update({
       where: { id },
-      data: { status: 'CHECKED_IN' },
+      data: { status: 'CHECKED_IN', checkInDate: new Date() },
     });
     // Set room status to OCCUPIED
     await this.db.room.update({
       where: { id: reservation.roomId },
       data: { status: 'OCCUPIED' },
     });
+    // Send check-in email
+    const dbUser = await this.db.user.findUnique({
+      where: { id: reservation.customerId },
+    });
+    if (dbUser?.email) {
+      await this.mailService.sendMail(
+        dbUser.email,
+        'Check-In Successful',
+        `You have successfully checked in on ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}.`,
+      );
+    }
     return updatedReservation;
   }
 
@@ -414,6 +557,25 @@ export class ReservationsService {
         status: 'PENDING',
       },
     });
+
+    // Send email to travel company user
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (user?.email) {
+      const checkIn = new Date(body.checkInDate).toLocaleString('en-US', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+      });
+      const checkOut = new Date(body.checkOutDate).toLocaleString('en-US', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+      });
+      await this.mailService.sendMail(
+        user.email,
+        'Travel Company Reservation Submitted',
+        `Your group reservation has been submitted and is awaiting approval from Saltbay.\n\nReservation Details:\nReservation ID: ${reservation.id}\nRoom Type: ${body.roomType}\nNumber of Rooms: ${body.numberOfRooms}\nCheck-In: ${checkIn}\nCheck-Out: ${checkOut}\nOccupants per Room: ${body.occupants}\n\nYou will receive a confirmation once approved by Saltbay.`,
+      );
+    }
+
     return {
       message: 'Reservation created. Awaiting clerk confirmation.',
       reservation,
@@ -436,16 +598,8 @@ export class ReservationsService {
     if (!reservation) throw new NotFoundException('Reservation not found');
     if (!reservation.numberOfRooms || reservation.numberOfRooms < 1)
       throw new BadRequestException('Not a group reservation');
-    // Find the room type from the reservation (via roomCategoryId or roomType logic)
-    // For this example, assume all rooms must be of the same type as originally requested
-    // We'll use the first available roomCategoryId from the RoomCategory table
-    // (You may want to store roomType/roomCategoryId in the reservation for more robust logic)
-    // Find available rooms of any type if roomId is null
     const roomType = await this.db.roomCategory.findFirst({
       where: {
-        // This assumes you store the type in reservation, e.g. reservation.roomType or similar
-        // If not, you may need to extend your model to store roomType/roomCategoryId
-        // For now, fallback to STANDARD
         name: 'STANDARD',
       },
     });
@@ -463,38 +617,89 @@ export class ReservationsService {
         'Not enough available rooms to confirm this reservation',
       );
     }
-    // Assign the first room to reservation.roomId, set all rooms to RESERVED
     for (const room of availableRooms) {
       await this.db.room.update({
         where: { id: room.id },
         data: { status: 'RESERVED' },
       });
     }
-    await this.db.reservation.update({
+    const updatedReservation = await this.db.reservation.update({
       where: { id },
       data: {
         roomId: availableRooms[0].id,
         status: 'CONFIRMED',
       },
+      include: { customer: true },
     });
+
+    // Calculate bill and send confirmation email
+    const pricePerNight = roomType.price;
+    const nights = Math.ceil(
+      (new Date(reservation.checkOutDate).getTime() -
+        new Date(reservation.checkInDate).getTime()) /
+        (1000 * 60 * 60 * 24),
+    );
+    const totalAmount = pricePerNight * nights * reservation.numberOfRooms;
+    const discountAmount = totalAmount * 0.1; // 10% discount
+    const finalAmount = totalAmount - discountAmount;
+
+    // Create billing record for travel company reservation
+    await this.billingService.create({
+      reservationId: id,
+      amount: finalAmount,
+      paymentMethod: 'Travel Company Account', // Appropriate payment method for travel companies
+    });
+
+    // Send confirmation email to travel company
+    if (updatedReservation.customer?.email) {
+      const checkIn = new Date(reservation.checkInDate).toLocaleString(
+        'en-US',
+        {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        },
+      );
+      const checkOut = new Date(reservation.checkOutDate).toLocaleString(
+        'en-US',
+        {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        },
+      );
+
+      await this.mailService.sendMail(
+        updatedReservation.customer.email,
+        'Travel Company Reservation Confirmed by Saltbay',
+        `Your group reservation has been CONFIRMED by Saltbay!\n\nReservation Details:\nReservation ID: ${id}\nRoom Type: ${roomType.name}\nNumber of Rooms: ${reservation.numberOfRooms}\nCheck-In: ${checkIn}\nCheck-Out: ${checkOut}\nOccupants per Room: ${reservation.occupants}\nNights: ${nights}\n\nBilling Details:\nPrice per Room per Night: $${pricePerNight}\nSubtotal: $${totalAmount.toFixed(2)}\nDiscount (10%): -$${discountAmount.toFixed(2)}\nFinal Amount: $${finalAmount.toFixed(2)}\n\nAssigned Room Numbers: ${availableRooms.map((r) => r.number).join(', ')}\n\nThank you for choosing Saltbay!`,
+      );
+    }
+
     return {
       message:
         'Travel company reservation confirmed and rooms assigned automatically.',
       assignedRoomIds: availableRooms.map((r) => r.id),
+      billing: {
+        pricePerNight,
+        nights,
+        subtotal: totalAmount,
+        discount: discountAmount,
+        finalAmount,
+      },
     };
   }
 
   async cancelTravelCompanyReservation(id: string) {
-    const reservation = await this.db.reservation.findUnique({ where: { id } });
+    const reservation = await this.db.reservation.findUnique({
+      where: { id },
+      include: { customer: true },
+    });
     if (!reservation) throw new NotFoundException('Reservation not found');
-    // If group reservation and was confirmed, set all reserved rooms back to AVAILABLE
+
     if (
       reservation.status === 'CONFIRMED' &&
       reservation.numberOfRooms &&
       reservation.numberOfRooms > 1
     ) {
-      // Find the room type/category from the reservation
-      // (Assume you store roomType or roomCategoryId in reservation, or infer from roomId)
       let roomCategoryId = null;
       if (reservation.roomId) {
         const room = await this.db.room.findUnique({
@@ -529,6 +734,31 @@ export class ReservationsService {
       where: { id },
       data: { status: 'CANCELLED' },
     });
+
+    // Send cancellation email to travel company
+    if (reservation.customer?.email) {
+      const checkIn = new Date(reservation.checkInDate).toLocaleString(
+        'en-US',
+        {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        },
+      );
+      const checkOut = new Date(reservation.checkOutDate).toLocaleString(
+        'en-US',
+        {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        },
+      );
+
+      await this.mailService.sendMail(
+        reservation.customer.email,
+        'Travel Company Reservation Cancelled',
+        `Your group reservation has been CANCELLED.\n\nReservation Details:\nReservation ID: ${id}\nNumber of Rooms: ${reservation.numberOfRooms}\nCheck-In: ${checkIn}\nCheck-Out: ${checkOut}\nOccupants per Room: ${reservation.occupants}\n\nIf you have any questions or need to make a new reservation, please contact Saltbay.\n\nThank you for your understanding.`,
+      );
+    }
+
     return { message: 'Travel company reservation cancelled.' };
   }
 }

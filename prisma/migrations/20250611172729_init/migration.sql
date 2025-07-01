@@ -28,12 +28,15 @@ CREATE TABLE "User" (
 CREATE TABLE "Reservation" (
     "id" TEXT NOT NULL,
     "customerId" TEXT NOT NULL,
-    "roomId" TEXT NOT NULL,
+    "roomId" TEXT,
     "checkInDate" TIMESTAMP(3) NOT NULL,
     "checkOutDate" TIMESTAMP(3) NOT NULL,
     "status" "ReservationStatus" NOT NULL DEFAULT 'PENDING',
     "occupants" INTEGER NOT NULL,
+    "numberOfRooms" INTEGER,
     "creditCard" TEXT,
+    "creditCardExpiry" TEXT,
+    "creditCardCVV" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -46,7 +49,6 @@ CREATE TABLE "Room" (
     "number" TEXT NOT NULL,
     "roomCategoryId" TEXT NOT NULL,
     "status" "RoomStatus" NOT NULL DEFAULT 'AVAILABLE',
-    "rate" DOUBLE PRECISION NOT NULL,
 
     CONSTRAINT "Room_pkey" PRIMARY KEY ("id")
 );
@@ -66,6 +68,9 @@ CREATE TABLE "BillingRecord" (
 CREATE TABLE "RoomCategory" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "description" TEXT,
+    "amenities" TEXT[],
+    "image" TEXT,
     "idealFor" TEXT,
     "capacity" INTEGER,
     "size" TEXT,
@@ -95,7 +100,7 @@ CREATE UNIQUE INDEX "RoomCategory_name_key" ON "RoomCategory"("name");
 ALTER TABLE "Reservation" ADD CONSTRAINT "Reservation_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Reservation" ADD CONSTRAINT "Reservation_roomId_fkey" FOREIGN KEY ("roomId") REFERENCES "Room"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Reservation" ADD CONSTRAINT "Reservation_roomId_fkey" FOREIGN KEY ("roomId") REFERENCES "Room"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Room" ADD CONSTRAINT "Room_roomCategoryId_fkey" FOREIGN KEY ("roomCategoryId") REFERENCES "RoomCategory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

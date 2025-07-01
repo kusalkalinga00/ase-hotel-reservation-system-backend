@@ -36,6 +36,7 @@ export class ReportsService {
                 roomCategory: true,
               },
             },
+            customer: true,
           },
         },
       },
@@ -43,18 +44,31 @@ export class ReportsService {
 
     // Calculate total revenue and breakdown by room category name
     let total = 0;
+    let travelCompanyTotal = 0;
     const byRoomCategory: Record<string, number> = {};
+    const travelCompanyByRoomCategory: Record<string, number> = {};
+
     for (const billing of billings) {
       total += billing.amount;
       const category =
         billing.reservation.room?.roomCategory?.name ?? 'Unknown';
       byRoomCategory[category] =
         (byRoomCategory[category] || 0) + billing.amount;
+
+      // Check if this is a travel company billing
+      if (billing.reservation?.customer?.role === 'TRAVEL_COMPANY') {
+        travelCompanyTotal += billing.amount;
+        travelCompanyByRoomCategory[category] =
+          (travelCompanyByRoomCategory[category] || 0) + billing.amount;
+      }
     }
 
     return {
       totalRevenue: total,
+      regularCustomerRevenue: total - travelCompanyTotal,
+      travelCompanyRevenue: travelCompanyTotal,
       byRoomCategory,
+      travelCompanyByRoomCategory,
       startDate: start.toISOString().slice(0, 10),
       endDate: end.toISOString().slice(0, 10),
     };
@@ -95,6 +109,9 @@ export class ReportsService {
         checkInDate: { lte: end },
         checkOutDate: { gte: start },
       },
+      include: {
+        customer: true,
+      },
     });
     const totalReservations = reservations.length;
     const cancelledCount = reservations.filter(
@@ -106,6 +123,32 @@ export class ReportsService {
     const checkedOutCount = reservations.filter(
       (r) => r.status === 'CHECKED_OUT',
     ).length;
+
+    // Travel company specific data
+    const travelCompanyReservations = reservations.filter(
+      (r) => r.customer?.role === 'TRAVEL_COMPANY',
+    );
+    const totalTravelCompanyReservations = travelCompanyReservations.length;
+    const totalTravelCompanyRooms = travelCompanyReservations.reduce(
+      (sum, r) => sum + (r.numberOfRooms || 1),
+      0,
+    );
+    const travelCompanyStatuses = {
+      PENDING: travelCompanyReservations.filter((r) => r.status === 'PENDING')
+        .length,
+      CONFIRMED: travelCompanyReservations.filter(
+        (r) => r.status === 'CONFIRMED',
+      ).length,
+      CANCELLED: travelCompanyReservations.filter(
+        (r) => r.status === 'CANCELLED',
+      ).length,
+      CHECKED_IN: travelCompanyReservations.filter(
+        (r) => r.status === 'CHECKED_IN',
+      ).length,
+      CHECKED_OUT: travelCompanyReservations.filter(
+        (r) => r.status === 'CHECKED_OUT',
+      ).length,
+    };
 
     // Room status counts
     const rooms = await this.db.room.findMany();
@@ -125,8 +168,58 @@ export class ReportsService {
       where: {
         createdAt: { gte: start, lte: end },
       },
+      include: {
+        reservation: {
+          include: {
+            customer: true,
+          },
+        },
+      },
     });
-    const revenue = billings.reduce((sum, b) => sum + b.amount, 0);
+    const totalRevenue = billings.reduce((sum, b) => sum + b.amount, 0);
+
+    // Separate travel company revenue
+    const travelCompanyBillings = billings.filter(
+      (b) => b.reservation?.customer?.role === 'TRAVEL_COMPANY',
+    );
+    const travelCompanyRevenue = travelCompanyBillings.reduce(
+      (sum, b) => sum + b.amount,
+      0,
+    );
+    const regularCustomerRevenue = totalRevenue - travelCompanyRevenue;
+
+    // Calculate pending amount for confirmed travel company reservations without billing records
+    let travelCompanyPendingAmount = 0;
+    const confirmedTravelCompanyReservations = travelCompanyReservations.filter(
+      (r) => r.status === 'CONFIRMED' && r.numberOfRooms && r.numberOfRooms > 0,
+    );
+
+    for (const reservation of confirmedTravelCompanyReservations) {
+      // Check if billing record already exists
+      const existingBilling = await this.db.billingRecord.findUnique({
+        where: { reservationId: reservation.id },
+      });
+
+      if (!existingBilling) {
+        // Calculate expected billing amount
+        const roomCategory = await this.db.roomCategory.findFirst({
+          where: { name: 'STANDARD' }, // Travel company reservations are typically STANDARD
+        });
+
+        if (roomCategory) {
+          const nights = Math.ceil(
+            (new Date(reservation.checkOutDate).getTime() -
+              new Date(reservation.checkInDate).getTime()) /
+              (1000 * 60 * 60 * 24),
+          );
+          const totalAmount =
+            roomCategory.price * nights * reservation.numberOfRooms;
+          const discountAmount = totalAmount * 0.1; // 10% discount
+          const finalAmount = totalAmount - discountAmount;
+          travelCompanyPendingAmount += finalAmount;
+        }
+      }
+    }
 
     return {
       period: period || 'daily',
@@ -138,7 +231,15 @@ export class ReportsService {
       checkedOutCount,
       totalRooms,
       roomStatusCounts,
-      revenue,
+      totalRevenue,
+      regularCustomerRevenue,
+      travelCompanyData: {
+        totalReservations: totalTravelCompanyReservations,
+        totalRooms: totalTravelCompanyRooms,
+        revenue: travelCompanyRevenue,
+        pendingAmount: travelCompanyPendingAmount,
+        statusBreakdown: travelCompanyStatuses,
+      },
     };
   }
 }

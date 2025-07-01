@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
@@ -43,6 +37,7 @@ model Reservation {
   creditCardCVV String? // nullable if not provided
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  deletedAt     DateTime? // Soft delete timestamp
   billingRecord BillingRecord?
 }
 
@@ -57,8 +52,8 @@ model Room {
 
 model BillingRecord {
   id             String   @id @default(uuid())
-  reservation    Reservation @relation(fields: [reservationId], references: [id])
-  reservationId  String   @unique // Make this unique for 1-1 relation
+  reservation    Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  reservationId  String?   @unique
   amount         Float
   paymentMethod  PaymentMethod
   createdAt      DateTime @default(now())
