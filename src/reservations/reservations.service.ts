@@ -643,6 +643,13 @@ export class ReservationsService {
     const discountAmount = totalAmount * 0.1; // 10% discount
     const finalAmount = totalAmount - discountAmount;
 
+    // Create billing record for travel company reservation
+    await this.billingService.create({
+      reservationId: id,
+      amount: finalAmount,
+      paymentMethod: 'Travel Company Account', // Appropriate payment method for travel companies
+    });
+
     // Send confirmation email to travel company
     if (updatedReservation.customer?.email) {
       const checkIn = new Date(reservation.checkInDate).toLocaleString(
@@ -682,7 +689,10 @@ export class ReservationsService {
   }
 
   async cancelTravelCompanyReservation(id: string) {
-    const reservation = await this.db.reservation.findUnique({ where: { id } });
+    const reservation = await this.db.reservation.findUnique({
+      where: { id },
+      include: { customer: true },
+    });
     if (!reservation) throw new NotFoundException('Reservation not found');
 
     if (
@@ -724,6 +734,31 @@ export class ReservationsService {
       where: { id },
       data: { status: 'CANCELLED' },
     });
+
+    // Send cancellation email to travel company
+    if (reservation.customer?.email) {
+      const checkIn = new Date(reservation.checkInDate).toLocaleString(
+        'en-US',
+        {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        },
+      );
+      const checkOut = new Date(reservation.checkOutDate).toLocaleString(
+        'en-US',
+        {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        },
+      );
+
+      await this.mailService.sendMail(
+        reservation.customer.email,
+        'Travel Company Reservation Cancelled',
+        `Your group reservation has been CANCELLED.\n\nReservation Details:\nReservation ID: ${id}\nNumber of Rooms: ${reservation.numberOfRooms}\nCheck-In: ${checkIn}\nCheck-Out: ${checkOut}\nOccupants per Room: ${reservation.occupants}\n\nIf you have any questions or need to make a new reservation, please contact Saltbay.\n\nThank you for your understanding.`,
+      );
+    }
+
     return { message: 'Travel company reservation cancelled.' };
   }
 }

@@ -146,7 +146,21 @@ export class ReportsController {
       doc.text(`  ${status}: ${count}`);
     }
     doc.moveDown();
-    doc.text(`Revenue: $${data.revenue}`);
+    doc.text(`Total Revenue: $${data.totalRevenue}`);
+    doc.text(`Regular Customer Revenue: $${data.regularCustomerRevenue}`);
+    doc.moveDown();
+    doc.text('Travel Company Data:');
+    doc.text(
+      `  Total Reservations: ${data.travelCompanyData.totalReservations}`,
+    );
+    doc.text(`  Total Rooms: ${data.travelCompanyData.totalRooms}`);
+    doc.text(`  Revenue: $${data.travelCompanyData.revenue}`);
+    doc.text('  Status Breakdown:');
+    for (const [status, count] of Object.entries(
+      data.travelCompanyData.statusBreakdown,
+    )) {
+      doc.text(`    ${status}: ${count}`);
+    }
     doc.end();
   }
 }
