@@ -557,6 +557,25 @@ export class ReservationsService {
         status: 'PENDING',
       },
     });
+
+    // Send email to travel company user
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (user?.email) {
+      const checkIn = new Date(body.checkInDate).toLocaleString('en-US', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+      });
+      const checkOut = new Date(body.checkOutDate).toLocaleString('en-US', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+      });
+      await this.mailService.sendMail(
+        user.email,
+        'Travel Company Reservation Submitted',
+        `Your group reservation has been submitted and is awaiting approval from Saltbay.\n\nReservation Details:\nReservation ID: ${reservation.id}\nRoom Type: ${body.roomType}\nNumber of Rooms: ${body.numberOfRooms}\nCheck-In: ${checkIn}\nCheck-Out: ${checkOut}\nOccupants per Room: ${body.occupants}\n\nYou will receive a confirmation once approved by Saltbay.`,
+      );
+    }
+
     return {
       message: 'Reservation created. Awaiting clerk confirmation.',
       reservation,
@@ -604,17 +623,61 @@ export class ReservationsService {
         data: { status: 'RESERVED' },
       });
     }
-    await this.db.reservation.update({
+    const updatedReservation = await this.db.reservation.update({
       where: { id },
       data: {
         roomId: availableRooms[0].id,
         status: 'CONFIRMED',
       },
+      include: { customer: true },
     });
+
+    // Calculate bill and send confirmation email
+    const pricePerNight = roomType.price;
+    const nights = Math.ceil(
+      (new Date(reservation.checkOutDate).getTime() -
+        new Date(reservation.checkInDate).getTime()) /
+        (1000 * 60 * 60 * 24),
+    );
+    const totalAmount = pricePerNight * nights * reservation.numberOfRooms;
+    const discountAmount = totalAmount * 0.1; // 10% discount
+    const finalAmount = totalAmount - discountAmount;
+
+    // Send confirmation email to travel company
+    if (updatedReservation.customer?.email) {
+      const checkIn = new Date(reservation.checkInDate).toLocaleString(
+        'en-US',
+        {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        },
+      );
+      const checkOut = new Date(reservation.checkOutDate).toLocaleString(
+        'en-US',
+        {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        },
+      );
+
+      await this.mailService.sendMail(
+        updatedReservation.customer.email,
+        'Travel Company Reservation Confirmed by Saltbay',
+        `Your group reservation has been CONFIRMED by Saltbay!\n\nReservation Details:\nReservation ID: ${id}\nRoom Type: ${roomType.name}\nNumber of Rooms: ${reservation.numberOfRooms}\nCheck-In: ${checkIn}\nCheck-Out: ${checkOut}\nOccupants per Room: ${reservation.occupants}\nNights: ${nights}\n\nBilling Details:\nPrice per Room per Night: $${pricePerNight}\nSubtotal: $${totalAmount.toFixed(2)}\nDiscount (10%): -$${discountAmount.toFixed(2)}\nFinal Amount: $${finalAmount.toFixed(2)}\n\nAssigned Room Numbers: ${availableRooms.map((r) => r.number).join(', ')}\n\nThank you for choosing Saltbay!`,
+      );
+    }
+
     return {
       message:
         'Travel company reservation confirmed and rooms assigned automatically.',
       assignedRoomIds: availableRooms.map((r) => r.id),
+      billing: {
+        pricePerNight,
+        nights,
+        subtotal: totalAmount,
+        discount: discountAmount,
+        finalAmount,
+      },
     };
   }
 
