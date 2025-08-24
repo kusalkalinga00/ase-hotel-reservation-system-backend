@@ -156,12 +156,13 @@ export class ReservationsController {
   updateCheckoutDate(
     @Param('id') id: string,
     @Request() req,
-    @Body() body: { checkOutDate: Date },
+    @Body() body: { checkOutDate: string },
   ) {
     return this.reservationsService.updateCheckoutDate(
       id,
       req.user.userId,
-      body.checkOutDate,
+      new Date(body.checkOutDate),
+      req.user.role,
     );
   }
 
