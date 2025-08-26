@@ -252,11 +252,31 @@ export class ReservationsService {
     return updatedReservation;
   }
 
-  async updateCheckoutDate(id: string, userId: string, checkOutDate: Date) {
+  async updateCheckoutDate(
+    id: string,
+    userId: string,
+    checkOutDate: Date,
+    userRole?: string,
+  ) {
     const reservation = await this.db.reservation.findUnique({ where: { id } });
     if (!reservation) throw new NotFoundException('Reservation not found');
-    if (reservation.customerId !== userId)
+    // Allow if user is the customer, or if user is CLERK or MANAGER
+    if (
+      reservation.customerId !== userId &&
+      userRole !== 'CLERK' &&
+      userRole !== 'MANAGER'
+    ) {
       throw new ForbiddenException('Not your reservation');
+    }
+    // Basic sanity checks
+    if (!(checkOutDate instanceof Date) || isNaN(checkOutDate.getTime())) {
+      throw new BadRequestException('Invalid checkOutDate');
+    }
+    if (new Date(checkOutDate) <= new Date(reservation.checkInDate)) {
+      throw new BadRequestException(
+        'checkOutDate must be after the checkInDate',
+      );
+    }
     return this.db.reservation.update({
       where: { id },
       data: { checkOutDate },
@@ -760,5 +780,70 @@ export class ReservationsService {
     }
 
     return { message: 'Travel company reservation cancelled.' };
+  }
+
+  // Admin/cron: cancel pending reservations missing credit card details
+  async cancelReservationsMissingCreditCard() {
+    // Find PENDING reservations with any missing or blank credit card details
+    const toCancel = await this.db.reservation.findMany({
+      where: {
+        status: 'PENDING',
+        OR: [
+          { creditCard: null },
+          { creditCard: '' },
+          { creditCardExpiry: null },
+          { creditCardExpiry: '' },
+          { creditCardCVV: null },
+          { creditCardCVV: '' },
+        ],
+      },
+      select: {
+        id: true,
+        roomId: true,
+        checkInDate: true,
+        checkOutDate: true,
+        customer: { select: { email: true, name: true } },
+      },
+    });
+
+    if (toCancel.length === 0) return { cancelled: 0 };
+
+    // Cancel reservations in a transaction
+    await this.db.$transaction(
+      toCancel.map((r) =>
+        this.db.reservation.update({
+          where: { id: r.id },
+          data: { status: 'CANCELLED' },
+        }),
+      ),
+    );
+
+    // Free rooms that are RESERVED
+    const roomIds = toCancel
+      .map((r) => r.roomId)
+      .filter((id): id is string => !!id);
+    if (roomIds.length) {
+      await this.db.room.updateMany({
+        where: { id: { in: roomIds }, status: 'RESERVED' },
+        data: { status: 'AVAILABLE' },
+      });
+    }
+
+    // Notify customers by email (best-effort; errors logged by MailService)
+    for (const r of toCancel) {
+      const email = r.customer?.email;
+      if (!email) continue;
+      const checkIn = new Date(r.checkInDate).toLocaleString('en-US', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+      });
+      await this.mailService.sendMail(
+        email,
+        'Reservation Cancelled: Missing Payment Details',
+        `Your reservation was cancelled because credit card details were not provided.\n\nCheck-In: ${checkIn}\nReservation ID: ${r.id}\n\nIf this was a mistake, please create a new reservation and include valid payment details.`,
+      );
+    }
+
+    return { cancelled: toCancel.length };
   }
 }

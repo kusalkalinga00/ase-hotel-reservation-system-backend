@@ -39,6 +39,7 @@ CREATE TABLE "Reservation" (
     "creditCardCVV" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "deletedAt" TIMESTAMP(3),
 
     CONSTRAINT "Reservation_pkey" PRIMARY KEY ("id")
 );
@@ -56,7 +57,7 @@ CREATE TABLE "Room" (
 -- CreateTable
 CREATE TABLE "BillingRecord" (
     "id" TEXT NOT NULL,
-    "reservationId" TEXT NOT NULL,
+    "reservationId" TEXT,
     "amount" DOUBLE PRECISION NOT NULL,
     "paymentMethod" "PaymentMethod" NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -106,4 +107,4 @@ ALTER TABLE "Reservation" ADD CONSTRAINT "Reservation_roomId_fkey" FOREIGN KEY (
 ALTER TABLE "Room" ADD CONSTRAINT "Room_roomCategoryId_fkey" FOREIGN KEY ("roomCategoryId") REFERENCES "RoomCategory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "BillingRecord" ADD CONSTRAINT "BillingRecord_reservationId_fkey" FOREIGN KEY ("reservationId") REFERENCES "Reservation"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "BillingRecord" ADD CONSTRAINT "BillingRecord_reservationId_fkey" FOREIGN KEY ("reservationId") REFERENCES "Reservation"("id") ON DELETE SET NULL ON UPDATE CASCADE;
