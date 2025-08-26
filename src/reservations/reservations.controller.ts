@@ -26,13 +26,17 @@ import {
 } from '@nestjs/swagger';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
+import { ReservationsScheduler } from './reservations.scheduler';
 
 @ApiTags('Reservations')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('reservations')
 export class ReservationsController {
-  constructor(private readonly reservationsService: ReservationsService) {}
+  constructor(
+    private readonly reservationsService: ReservationsService,
+    private readonly reservationsScheduler: ReservationsScheduler,
+  ) {}
 
   // CUSTOMER ENDPOINTS
   @Post()
@@ -288,5 +292,14 @@ export class ReservationsController {
   })
   async cancelTravelCompanyReservation(@Param('id') id: string) {
     return this.reservationsService.cancelTravelCompanyReservation(id);
+  }
+
+  // ADMIN ONLY: Manually trigger cancellation of missing-credit-card reservations
+  @Post('admin/run-cancel-missing-cards')
+  @Roles('MANAGER')
+  @ApiOperation({ summary: 'Run the cancellation job now (admin only)' })
+  @ApiResponse({ status: 200, description: 'Cancellation job executed.' })
+  async runCancelMissingCards() {
+    return this.reservationsService.cancelReservationsMissingCreditCard();
   }
 }
