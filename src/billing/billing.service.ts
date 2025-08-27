@@ -32,7 +32,7 @@ export class BillingService {
       data: {
         reservationId: dto.reservationId,
         amount: dto.amount,
-        paymentMethod: dto.paymentMethod as any, // Cast to enum
+        paymentMethod: 'COMPANY', // Changed to correct enum value
       },
     });
   }
